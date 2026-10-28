@@ -1,7 +1,9 @@
 # Constellation
 
 A thinking space for investors: save tweets, posts, articles and notes, and AI files each one
-into a field of themed bubbles that reorganize themselves as you save.
+into a field of themed bubbles that reorganize themselves as you save. It also bonds related notes
+together and writes **deductions**: takeaways you only get by combining sources, like GW of buildout
+times tokens per GW giving total compute. Switch to the **Web** view to see the whole network.
 
 The original single-file prototype is kept in [`prototype/constellation.jsx`](prototype/constellation.jsx).
 
@@ -23,7 +25,9 @@ stored in your browser. Add the Supabase variables to turn on accounts and a rea
    It creates the `bubbles` and `items` tables with row-level security so each user only sees their own data.
 3. Under **Authentication → URL Configuration**, set the Site URL to your app's URL and add
    `http://localhost:3000/auth/callback` and `https://<your-domain>/auth/callback` to the redirect URLs.
-4. Copy the project URL and anon key from **Project Settings → API** into `NEXT_PUBLIC_SUPABASE_URL`
+4. Run [`supabase/migrations/0002_connections.sql`](supabase/migrations/0002_connections.sql) too.
+   It adds the tables for bonds and deductions. Until it runs, the app works but connections stay off.
+5. Copy the project URL and anon key from **Project Settings → API** into `NEXT_PUBLIC_SUPABASE_URL`
    and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 
 Sign-in is by emailed magic link. The first time someone signs in, anything they saved in local
@@ -37,9 +41,11 @@ mode on that browser is copied into their account.
 
 ## How it fits together
 
-- `src/components/Constellation.jsx` is the bubble UI, ported from the prototype.
+- `src/components/Constellation.tsx` is the main screen; `space/` holds the orbs and the Web view,
+  `ui/` the panels and sheets.
 - `src/app/api/classify` reads a link or text and picks its theme; `src/app/api/cluster` regroups a
-  theme's notes into sub-bubbles. Both run on the server so the Anthropic key never reaches the browser,
-  and both require a signed-in user when Supabase is configured.
+  theme's notes into sub-bubbles; `src/app/api/connect` bonds a new note to related ones and writes
+  deductions from the combination. All three run on the server so the Anthropic key never reaches the browser,
+  and all require a signed-in user when Supabase is configured.
 - `src/lib/storage.ts` saves the graph to Supabase (or `localStorage` in local mode).
 - `src/proxy.ts` keeps the sign-in session fresh and sends signed-out visitors to `/login`.

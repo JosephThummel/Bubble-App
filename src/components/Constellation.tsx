@@ -1,20 +1,24 @@
 "use client";
 
 import { AnimatePresence, motion, type Variants } from "motion/react";
-import { ArrowLeft, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2 } from "lucide-react";
+import { ArrowLeft, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import ItemGrid from "@/components/space/ItemGrid";
 import OrbField from "@/components/space/OrbField";
 import Starfield from "@/components/space/Starfield";
+import WebView from "@/components/space/WebView";
 import AddSheet from "@/components/ui/AddSheet";
 import CommandPalette from "@/components/ui/CommandPalette";
 import { ConfirmDialog, MoveDialog, NameDialog } from "@/components/ui/Dialogs";
 import Island from "@/components/ui/Island";
+import InsightPanel from "@/components/ui/InsightPanel";
+import InsightsSheet from "@/components/ui/InsightsSheet";
 import ItemPanel from "@/components/ui/ItemPanel";
 import Sheet from "@/components/ui/Sheet";
+import ViewSwitch, { type ViewMode } from "@/components/ui/ViewSwitch";
 import { useConstellation } from "@/hooks/useConstellation";
-import { deepCount, pathLabel, trailOf, type Item } from "@/lib/graph";
+import { deepCount, descendantsOf, pathLabel, trailOf, type Item } from "@/lib/graph";
 import { signOut } from "@/lib/storage";
 import { supabaseEnabled } from "@/lib/supabase/config";
 
@@ -52,6 +56,9 @@ export default function Constellation() {
   const [adding, setAdding] = useState(false);
   const [searching, setSearching] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const [openInsightId, setOpenInsightId] = useState<string | null>(null);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [mode, setMode] = useState<ViewMode>("orbits");
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +71,23 @@ export default function Constellation() {
   const children = useMemo(() => bubbles.filter(b => b.parentId === fid), [bubbles, fid]);
   const here = useMemo(() => items.filter(i => i.bubbleId === fid), [items, fid]);
   const openItem = items.find(i => i.id === openItemId) ?? null;
+  const links = useMemo(() => c.graph?.links ?? [], [c.graph]);
+  const insights = useMemo(() => c.graph?.insights ?? [], [c.graph]);
+  const openInsight = insights.find(s => s.id === openInsightId) ?? null;
+  // Everything under the focused bubble, for the web view.
+  const scopeItems = useMemo(() => {
+    if (!fid) return items;
+    const scope = new Set([fid, ...descendantsOf(fid, bubbles)]);
+    return items.filter(i => scope.has(i.bubbleId));
+  }, [items, bubbles, fid]);
+  // In the web, notes cluster by the bubble one level below the focus.
+  const groupOf = useCallback((it: Item) => {
+    const t = trailOf(it.bubbleId, bubbles);
+    const depth = fid ? trailOf(fid, bubbles).length : 0;
+    const g = t[depth] ?? t[t.length - 1];
+    return { key: g?.id ?? "", hue: g?.hue ?? 232 };
+  }, [bubbles, fid]);
+  const unlinked = scopeItems.filter(i => !i.linkedAt).length;
 
   const go = useCallback((id: string | null, origin?: { x: number; y: number }) => {
     const depth = (x: string | null) => trailOf(x, bubbles).length;
@@ -81,13 +105,13 @@ export default function Constellation() {
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLElement && /input|textarea/i.test(e.target.tagName);
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSearching(s => !s); return; }
-      if (typing || adding || searching || openItemId || dialog.kind !== "none") return;
+      if (typing || adding || searching || openItemId || openInsightId || insightsOpen || dialog.kind !== "none") return;
       if (e.key === "/") { e.preventDefault(); setSearching(true); }
       else if (e.key === "Escape" && focus) go(focus.parentId);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [adding, searching, openItemId, dialog, focus, go]);
+  }, [adding, searching, openItemId, openInsightId, insightsOpen, dialog, focus, go]);
 
   if (!c.graph) {
     return (
@@ -127,6 +151,10 @@ export default function Constellation() {
           <kbd>⌘K</kbd>
         </button>
         <div className="c-bar-end">
+          <button className="c-icon-btn c-gem-btn" title="Deductions" aria-label={`Deductions, ${insights.length}`} onClick={() => setInsightsOpen(true)}>
+            <Gem size={16} />
+            {insights.length > 0 && <span className="c-badge">{insights.length}</span>}
+          </button>
           <motion.button className="c-btn c-btn-primary c-save-btn" whileTap={{ scale: 0.95 }} onClick={() => setAdding(true)}>
             <Plus size={16} strokeWidth={2.4} /> <span>Save</span>
           </motion.button>
@@ -139,7 +167,7 @@ export default function Constellation() {
         </div>
       </header>
 
-      <Island activity={c.activity} onJump={id => go(id)} />
+      <Island activity={c.activity} onJump={id => go(id)} onOpenInsight={setOpenInsightId} onOpenItem={setOpenItemId} />
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.section
@@ -171,6 +199,7 @@ export default function Constellation() {
                 : `${total} ${total === 1 ? "note" : "notes"} across ${themes} ${themes === 1 ? "theme" : "themes"}`}
             </span>
             <div className="c-actions">
+              <ViewSwitch mode={mode} onChange={setMode} />
               {isTheme && focus && (
                 <button className={"c-pill" + (focus.pinned ? "" : " c-pill-on")} onClick={() => c.togglePin(focus.id)}
                   title={focus.pinned ? "You organize this theme by hand" : "AI keeps this theme organized"}>
@@ -192,9 +221,12 @@ export default function Constellation() {
 
       <main ref={stageRef} className="c-stage">
         <AnimatePresence initial={false} custom={nav}>
-          <motion.div key={fid ?? "root"} className="c-level" custom={nav} variants={levelVariants}
+          <motion.div key={`${fid ?? "root"}:${mode}`} className="c-level" custom={nav} variants={levelVariants}
             initial="enter" animate="center" exit="exit">
-            {showOrbs ? (
+            {mode === "web" && scopeItems.length ? (
+              <WebView items={scopeItems} links={links} insights={insights} groupOf={groupOf}
+                onOpenItem={setOpenItemId} onOpenInsight={setOpenInsightId} />
+            ) : showOrbs ? (
               <OrbField bubbles={children} allBubbles={bubbles} items={items} pulseId={pulseId} onOpen={(id, o) => go(id, o)} />
             ) : here.length ? (
               <div className="c-scroll">
@@ -206,7 +238,13 @@ export default function Constellation() {
           </motion.div>
         </AnimatePresence>
         <AnimatePresence>
-          {showOrbs && here.length > 0 && (
+          {mode === "web" && unlinked > 0 && c.connectionsReady && (
+            <motion.button key="connect" className="c-loose glass c-connect" onClick={c.linkAll}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}>
+              <Link2 size={14} /> Find connections for {unlinked} {unlinked === 1 ? "note" : "notes"}
+            </motion.button>
+          )}
+          {mode === "orbits" && showOrbs && here.length > 0 && (
             <motion.button key="loose" className="c-loose glass" onClick={() => setDialog({ kind: "loose" })}
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}>
               <StickyNote size={14} /> {here.length} {here.length === 1 ? "note" : "notes"} not in a sub-topic
@@ -214,6 +252,10 @@ export default function Constellation() {
           )}
         </AnimatePresence>
       </main>
+
+      {!c.connectionsReady && (
+        <div className="c-banner glass">Connections are off until the database update runs. See step 6 of the setup guide.</div>
+      )}
 
       <AnimatePresence>
         {c.saveError && (
@@ -227,9 +269,18 @@ export default function Constellation() {
       <CommandPalette open={searching} onClose={() => setSearching(false)} bubbles={bubbles} items={items}
         onPickBubble={id => go(id)} onPickItem={jumpToItem} />
       <ItemPanel item={openItem} hue={panelHue} path={openItem ? pathLabel(openItem.bubbleId, bubbles) : ""}
+        items={items} links={links} insights={insights}
+        onOpenItem={id => { setOpenInsightId(null); setOpenItemId(id); }}
+        onOpenInsight={id => { setOpenItemId(null); setOpenInsightId(id); }}
         onClose={() => setOpenItemId(null)}
         onMove={() => openItem && setDialog({ kind: "move", itemId: openItem.id })}
         onDelete={() => openItem && setDialog({ kind: "deleteItem", itemId: openItem.id })} />
+
+      <InsightPanel insight={openInsight} items={items} pathOf={it => pathLabel(it.bubbleId, bubbles)}
+        onClose={() => setOpenInsightId(null)}
+        onOpenItem={id => { setOpenInsightId(null); setOpenItemId(id); }}
+        onDismiss={() => { if (openInsight) { c.dismissInsight(openInsight.id); setOpenInsightId(null); } }} />
+      <InsightsSheet open={insightsOpen} insights={insights} onClose={() => setInsightsOpen(false)} onOpen={setOpenInsightId} />
 
       <Sheet open={dialog.kind === "loose"} onClose={closeDialog} width={760} label="Notes not in a sub-topic">
         <div className="c-sheet-title">Not in a sub-topic</div>

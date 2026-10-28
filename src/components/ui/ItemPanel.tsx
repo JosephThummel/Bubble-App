@@ -1,69 +1,84 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, FolderInput, Trash2, X } from "lucide-react";
-import { useEffect, type CSSProperties } from "react";
+import { ArrowUpRight, FolderInput, Gem, Trash2 } from "lucide-react";
+import SidePanel from "./SidePanel";
 import { SourceGlyph, timeAgo } from "./bits";
-import type { Item } from "@/lib/graph";
+import type { Insight, Item, Link } from "@/lib/graph";
 
-// Slides in from the right with everything about one saved note.
-export default function ItemPanel({ item, path, hue, onClose, onMove, onDelete }: {
-  item: Item | null; path: string; hue: number;
+// Everything about one saved note, including what it's bonded to.
+export default function ItemPanel({ item, path, hue, items, links, insights, onClose, onMove, onDelete, onOpenItem, onOpenInsight }: {
+  item: Item | null; path: string; hue: number; items: Item[]; links: Link[]; insights: Insight[];
   onClose: () => void; onMove: () => void; onDelete: () => void;
+  onOpenItem: (id: string) => void; onOpenInsight: (id: string) => void;
 }) {
-  useEffect(() => {
-    if (!item) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [item, onClose]);
-
   const raw = item && item.raw.trim() !== item.url ? item.raw.trim() : "";
+  const bonds = item
+    ? links.filter(l => l.a === item.id || l.b === item.id)
+      .map(l => ({ l, other: items.find(i => i.id === (l.a === item.id ? l.b : l.a)) }))
+      .filter((x): x is { l: Link; other: Item } => !!x.other)
+      .sort((x, y) => y.l.strength - x.l.strength)
+    : [];
+  const deductions = item ? insights.filter(s => s.itemIds.includes(item.id)) : [];
+
   return (
-    <AnimatePresence>
+    <SidePanel openKey={item?.id ?? null} hue={hue} eyebrow={path} onClose={onClose}>
       {item && (
         <>
-          <motion.div className="c-panel-scrim" onClick={onClose}
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
-          <motion.aside
-            key={item.id}
-            className="c-panel glass"
-            style={{ "--h": hue } as CSSProperties}
-            initial={{ x: "105%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "105%" }}
-            transition={{ type: "spring", stiffness: 320, damping: 34 }}
-          >
-            <div className="c-panel-head">
-              <div className="c-panel-path">{path}</div>
-              <button className="c-icon-btn" onClick={onClose} aria-label="Close"><X size={18} /></button>
+          <div className="c-panel-meta">
+            <SourceGlyph source={item.source} />
+            <span>{item.source === "X" ? "Post on X" : item.source}</span>
+            <span className="c-dot" />
+            <span>Saved {timeAgo(item.createdAt)}</span>
+          </div>
+          <h2 className="c-panel-title">{item.title}</h2>
+          {item.summary && <p className="c-panel-summary">{item.summary}</p>}
+          {item.url && (
+            <a className="c-panel-link" href={item.url} target="_blank" rel="noreferrer">
+              Open original <ArrowUpRight size={15} />
+            </a>
+          )}
+          {!!item.facts?.length && (
+            <div className="c-panel-section">
+              <div className="c-eyebrow">Key facts</div>
+              <ul className="c-facts">{item.facts.map((f, i) => <li key={i}>{f}</li>)}</ul>
             </div>
-            <div className="c-panel-meta">
-              <SourceGlyph source={item.source} />
-              <span>{item.source === "X" ? "Post on X" : item.source}</span>
-              <span className="c-dot" />
-              <span>Saved {timeAgo(item.createdAt)}</span>
+          )}
+          {deductions.length > 0 && (
+            <div className="c-panel-section">
+              <div className="c-eyebrow">Deductions</div>
+              {deductions.map(s => (
+                <button key={s.id} className="c-deduction-row" onClick={() => onOpenInsight(s.id)}>
+                  <Gem size={14} /> <span>{s.title}</span>
+                </button>
+              ))}
             </div>
-            <h2 className="c-panel-title">{item.title}</h2>
-            {item.summary && <p className="c-panel-summary">{item.summary}</p>}
-            {item.url && (
-              <a className="c-panel-link" href={item.url} target="_blank" rel="noreferrer">
-                Open original <ArrowUpRight size={15} />
-              </a>
-            )}
-            {raw && (
-              <div className="c-panel-raw">
-                <div className="c-eyebrow">What you saved</div>
-                <p>{raw}</p>
-              </div>
-            )}
-            <div className="c-panel-actions">
-              <button className="c-btn c-btn-ghost" onClick={onMove}><FolderInput size={15} /> Move</button>
-              <button className="c-btn c-btn-danger" onClick={onDelete}><Trash2 size={15} /> Delete</button>
+          )}
+          {bonds.length > 0 && (
+            <div className="c-panel-section">
+              <div className="c-eyebrow">Bonded to</div>
+              {bonds.map(({ l, other }) => (
+                <button key={l.id} className="c-bond-row" onClick={() => onOpenItem(other.id)}>
+                  <span className="c-bond-strength" data-s={l.strength}><i /><i /><i /></span>
+                  <span className="c-bond-text">
+                    <span className="c-bond-title">{other.title}</span>
+                    <span className="c-bond-label">{l.label}</span>
+                  </span>
+                </button>
+              ))}
             </div>
-          </motion.aside>
+          )}
+          {raw && (
+            <div className="c-panel-section">
+              <div className="c-eyebrow">What you saved</div>
+              <p className="c-panel-raw">{raw}</p>
+            </div>
+          )}
+          <div className="c-panel-actions">
+            <button className="c-btn c-btn-ghost" onClick={onMove}><FolderInput size={15} /> Move</button>
+            <button className="c-btn c-btn-danger" onClick={onDelete}><Trash2 size={15} /> Delete</button>
+          </div>
         </>
       )}
-    </AnimatePresence>
+    </SidePanel>
   );
 }
