@@ -22,7 +22,7 @@ const GROUPS: { key: GroupKey; label: string }[] = [
   { key: "source", label: "Source" },
 ];
 export const KIND_LABEL: Record<string, string> = {
-  pitch: "Pitch", thesis: "Thesis", research: "Research", data: "Data", news: "News", opinion: "Opinion",
+  pitch: "Pitch", model: "Model", filing: "Filing", thesis: "Thesis", research: "Research", data: "Data", news: "News", opinion: "Opinion",
 };
 
 const PREFS = "constellation:list";

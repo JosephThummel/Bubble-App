@@ -1,14 +1,14 @@
 "use client";
 
-import { ArrowUpRight, FolderInput, Gem, Trash2 } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, FolderInput, Gem, Minus, Trash2 } from "lucide-react";
 import SidePanel from "./SidePanel";
 import { SourceGlyph, timeAgo } from "./bits";
 import { KIND_LABEL } from "@/components/space/ListView";
-import type { Insight, Item, Link } from "@/lib/graph";
+import { stockOf, type Bubble, type Insight, type Item, type Link } from "@/lib/graph";
 
 // Everything about one saved note, including what it's bonded to.
-export default function ItemPanel({ item, path, hue, items, links, insights, onClose, onMove, onDelete, onOpenItem, onOpenInsight, onOpenTicker }: {
-  item: Item | null; path: string; hue: number; items: Item[]; links: Link[]; insights: Insight[];
+export default function ItemPanel({ item, path, hue, items, links, insights, bubbles, onClose, onMove, onDelete, onOpenItem, onOpenInsight, onOpenTicker }: {
+  item: Item | null; path: string; hue: number; items: Item[]; links: Link[]; insights: Insight[]; bubbles: Bubble[];
   onClose: () => void; onMove: () => void; onDelete: () => void;
   onOpenItem: (id: string) => void; onOpenInsight: (id: string) => void; onOpenTicker: (t: string) => void;
 }) {
@@ -47,6 +47,22 @@ export default function ItemPanel({ item, path, hue, items, links, insights, onC
             <a className="c-panel-link" href={item.url} target="_blank" rel="noreferrer">
               Open original <ArrowUpRight size={15} />
             </a>
+          )}
+          {!!item.reads?.length && (
+            <div className="c-panel-section">
+              <div className="c-eyebrow">What it means for your stocks</div>
+              {item.reads.filter(r => stockOf(r.ticker, bubbles)).map(r => (
+                <button key={r.ticker} className="c-read c-read-panel" onClick={() => onOpenTicker(r.ticker)}>
+                  <span className={`c-read-impact is-${r.impact}`} title={r.impact}>
+                    {r.impact === "positive" ? <ArrowUpRight size={14} /> : r.impact === "negative" ? <ArrowDownRight size={14} /> : <Minus size={14} />}
+                  </span>
+                  <span className="c-read-text">
+                    <span className="c-read-title">${r.ticker} {stockOf(r.ticker, bubbles)?.name !== r.ticker ? stockOf(r.ticker, bubbles)?.name : ""}</span>
+                    <span className="c-read-why">{r.why}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
           {!!item.facts?.length && (
             <div className="c-panel-section">
