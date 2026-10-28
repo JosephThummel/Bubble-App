@@ -170,3 +170,40 @@ Use only the ids shown in brackets. Respond with ONLY this JSON, no markdown:
       .map(s => ({ itemIds: s.itemIds, title: String(s.title).slice(0, 140), body: String(s.body).slice(0, 1200) })),
   };
 }
+
+export type NoteForAsking = { theme: string; title: string; summary: string; facts: string[]; source: string; url: string; date: string; text: string };
+export type DeductionForAsking = { title: string; body: string; notes: number[] };
+export type Turn = { role: "user" | "assistant"; content: string };
+
+/* answer a question from the investor's own research, streaming text; notes are cited as [n], 1-based */
+export function ask(question: string, scope: string, notes: NoteForAsking[], deductions: DeductionForAsking[], history: Turn[]) {
+  const library = notes.map((n, i) =>
+    `<note n="${i + 1}" theme="${n.theme}" source="${n.source}" saved="${n.date}"${n.url ? ` url="${n.url}"` : ""}>
+${n.title}
+${n.summary}${n.facts.length ? "\nFacts: " + n.facts.join(" | ") : ""}${n.text && n.text !== n.summary ? "\nSaved text: " + n.text : ""}
+</note>`).join("\n");
+  const found = deductions.map(d => `- ${d.title}: ${d.body} (from notes ${d.notes.map(n => `[${n}]`).join(" ")})`).join("\n");
+
+  const system =
+`You are the research analyst inside a hedge fund investor's notes app. They are asking about ${scope}. Everything they have saved for that scope is below, along with deductions already drawn from it.
+
+<library>
+${library || "(nothing saved yet)"}
+</library>
+${found ? `\n<deductions>\n${found}\n</deductions>\n` : ""}
+How to answer:
+- Ground every claim in the notes and cite them inline as [n], using the note numbers above, right after the claim. Cite several like [2][5].
+- Combine notes when that answers better: do the arithmetic across sources, show the numbers and say what you assumed.
+- If the notes conflict, say so and cite both sides. If they don't cover something, say plainly what is missing; you may add general knowledge but label it as not from their notes.
+- Lead with the answer in one or two sentences, then support it. Be dense and concrete, like a sell-side note, not a chatbot. Use short paragraphs and "- " bullets; **bold** sparingly. No headings, no tables.`;
+
+  return client.beta.messages.stream({
+    model: PRIMARY_MODEL,
+    max_tokens: 8000,
+    output_config: { effort: "medium" },
+    system,
+    messages: [...history.slice(-8), { role: "user", content: question }],
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+  });
+}
