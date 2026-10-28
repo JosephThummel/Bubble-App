@@ -1,6 +1,6 @@
-import type { Bubble, Graph, Item } from "@/lib/storage";
+import type { Bubble, Graph, Insight, Item, Link } from "@/lib/storage";
 
-export type { Bubble, Graph, Item };
+export type { Bubble, Graph, Insight, Item, Link };
 
 // Theme hues, picked to stay luminous but not neon against deep space.
 export const HUES = [232, 192, 32, 158, 284, 348, 208, 124, 14, 300];
@@ -14,6 +14,8 @@ export const SEED: Graph = {
     { id: "b_port", name: "Portfolio", parentId: null, hue: 158, pinned: true },
   ],
   items: [],
+  links: [],
+  insights: [],
 };
 
 export const uid = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -72,7 +74,7 @@ export function flattenTheme(g: Graph, themeId: string): Graph {
   const items = g.items.map(i => (scope.has(i.bubbleId) && i.bubbleId !== themeId ? { ...i, bubbleId: themeId } : i));
   const bubbles = g.bubbles.filter(b =>
     b.parentId !== themeId || g.bubbles.some(x => x.parentId === b.id) || items.some(i => i.bubbleId === b.id));
-  return { bubbles, items };
+  return { ...g, bubbles, items };
 }
 
 // Apply an AI re-clustering. Only moves items already inside the theme, and only
@@ -105,10 +107,28 @@ export function applyClusters(g: Graph, themeId: string, clusters: { name: strin
     if (b.parentId !== themeId || keep.has(b.id)) return true;
     return bubbles.some(x => x.parentId === b.id) || items.some(i => i.bubbleId === b.id);
   });
-  return { bubbles, items };
+  return { ...g, bubbles, items };
 }
 
 export function removeBubble(g: Graph, id: string): Graph {
   const rm = new Set([id, ...descendantsOf(id, g.bubbles)]);
-  return { bubbles: g.bubbles.filter(b => !rm.has(b.id)), items: g.items.filter(i => !rm.has(i.bubbleId)) };
+  const gone = g.items.filter(i => rm.has(i.bubbleId)).map(i => i.id);
+  return removeItems({ ...g, bubbles: g.bubbles.filter(b => !rm.has(b.id)) }, gone);
+}
+
+// Drop items along with their bonds, and any deduction left resting on fewer than two items.
+export function removeItems(g: Graph, ids: string[]): Graph {
+  if (!ids.length) return g;
+  const rm = new Set(ids);
+  const insights = g.insights.flatMap(s => {
+    if (!s.itemIds.some(x => rm.has(x))) return [s];
+    const left = s.itemIds.filter(x => !rm.has(x));
+    return left.length >= 2 ? [{ ...s, itemIds: left }] : [];
+  });
+  return {
+    bubbles: g.bubbles,
+    items: g.items.filter(i => !rm.has(i.id)),
+    links: g.links.filter(l => !rm.has(l.a) && !rm.has(l.b)),
+    insights,
+  };
 }
