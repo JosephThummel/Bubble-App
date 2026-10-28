@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const notes = (Array.isArray(body.notes) ? body.notes : []).slice(0, 3000).map(n => ({
     theme: str(n.theme, 200), title: str(n.title, 300), summary: str(n.summary, 1200), source: str(n.source, 40),
     url: str(n.url, 500), date: str(n.date, 40), facts: (Array.isArray(n.facts) ? n.facts : []).slice(0, 8).map(f => str(f, 300)),
-    text: str(n.text, 6000),
+    text: str(n.text, n.source === "File" ? 24000 : 6000),
   }));
   const deductions = (Array.isArray(body.deductions) ? body.deductions : []).slice(0, 200).map(d => ({
     title: str(d.title, 200), body: str(d.body, 1500), notes: (Array.isArray(d.notes) ? d.notes : []).filter(Number.isInteger),

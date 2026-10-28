@@ -1,15 +1,17 @@
 "use client";
 
-import { ArrowUp, Link2 } from "lucide-react";
+import { ArrowUp, Link2, Paperclip } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Sheet from "./Sheet";
+import { ACCEPT } from "@/lib/files";
 import { extractUrl, sourceFromUrl } from "@/lib/graph";
 
 // Paste a link or text; the AI reads it and files it. Stays open with a message if it can't.
-export default function AddSheet({ open, onClose, onSubmit }: {
-  open: boolean; onClose: () => void; onSubmit: (text: string) => Promise<string>;
+export default function AddSheet({ open, onClose, onSubmit, onFiles }: {
+  open: boolean; onClose: () => void; onSubmit: (text: string) => Promise<string>; onFiles: (files: File[]) => void;
 }) {
+  const picker = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -29,7 +31,7 @@ export default function AddSheet({ open, onClose, onSubmit }: {
   return (
     <Sheet open={open} onClose={() => !busy && onClose()} label="Save to Constellation">
       <div className="c-sheet-title">Save something</div>
-      <div className="c-sheet-sub">Paste a link to an article, Substack or tweet, or paste any text. It gets read and filed into the right theme.</div>
+      <div className="c-sheet-sub">Paste a link to an article, Substack or tweet, paste any text, or add files. Everything gets read and filed into the right theme.</div>
       <div className="c-compose">
         <textarea
           autoFocus
@@ -59,6 +61,15 @@ export default function AddSheet({ open, onClose, onSubmit }: {
           </motion.button>
         </div>
       </div>
+      <button className="c-filedrop" onClick={() => picker.current?.click()} disabled={busy}>
+        <span className="c-filedrop-icon"><Paperclip size={17} /></span>
+        <span className="c-filedrop-text">
+          <span className="c-filedrop-title">Add files</span>
+          <span className="c-filedrop-sub">PDFs, images and screenshots, Word, Excel, PowerPoint, CSV or text. Or drop them anywhere.</span>
+        </span>
+      </button>
+      <input ref={picker} type="file" multiple accept={ACCEPT} hidden
+        onChange={e => { const files = [...(e.target.files ?? [])]; e.target.value = ""; if (files.length) { onClose(); onFiles(files); } }} />
       <AnimatePresence>
         {error && (
           <motion.div className="c-error" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>

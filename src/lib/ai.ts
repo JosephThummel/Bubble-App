@@ -26,7 +26,7 @@ function extractJSON<T>(content: Anthropic.Beta.BetaContentBlock[]): T {
 // One request, continuing server-tool turns that pause mid-search.
 async function run(
   model: string,
-  prompt: string,
+  prompt: string | Anthropic.Beta.BetaContentBlockParam[],
   opts: { tools?: Anthropic.Beta.BetaToolUnion[]; effort: "low" | "medium" | "high" },
 ): Promise<Anthropic.Beta.BetaContentBlock[]> {
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: prompt }];
@@ -90,8 +90,17 @@ export async function classify(input: string, bubbles: BubbleLite[], forceText =
 Use web_fetch to read the page it points to (it may be a tweet on X, a news article, a Substack post, or a blog). If fetching fails or X blocks it, use web_search to find what it says. Base the title and summary on the real content you find. If you genuinely cannot read it, set summary to "Couldn't read the link — paste the text to file it precisely." and topic to "Unsorted".`
     : `Read this pasted content:\n"""${input.slice(0, 4000)}"""`;
 
-  const prompt =
-`You maintain the research space of a hedge fund investor who tracks many secular themes (e.g. humanoid robotics, semiconductors, GLP-1 / obesity, nuclear & SMRs, defense, power & grid, crypto infrastructure, space) plus a personal Portfolio of companies they own.
+  const prompt = filingPrompt(bubbles, body, `{"topic":"","subtopic":"","title":"3-8 word title","summary":"one sentence under 140 chars","facts":["..."]}`);
+
+  const content = await run(PRIMARY_MODEL, prompt, { tools, effort: url ? "medium" : "low" });
+  const out = extractJSON<Classification>(content);
+  return { ...out, facts: cleanFacts(out.facts) };
+}
+
+const cleanFacts = (f: unknown, max = 8) => (Array.isArray(f) ? f.filter((x): x is string => typeof x === "string").slice(0, max) : []);
+
+function filingPrompt(bubbles: BubbleLite[], body: string, shape: string, factCount = 6) {
+  return `You maintain the research space of a hedge fund investor who tracks many secular themes (e.g. humanoid robotics, semiconductors, GLP-1 / obesity, nuclear & SMRs, defense, power & grid, crypto infrastructure, space) plus a personal Portfolio of companies they own.
 
 Existing top-level themes:
 ${taxonomyString(bubbles)}
@@ -100,14 +109,35 @@ ${body}
 
 Pick the best TOP-LEVEL theme. Reuse an existing theme name exactly if it fits. If this is a genuinely distinct secular theme not represented yet, use a new durable, sector- or thesis-level name (not a one-off headline). Also give a rough sub-topic guess.
 
-Also pull out up to 6 key facts an analyst would want to combine with other research later: concrete claims, numbers with their units and dates, named companies or tickers, forecasts. Each fact is one short self-contained line, e.g. "Microsoft plans 5 GW of new datacenter capacity by 2027". Skip opinions with no substance.
+Also pull out up to ${factCount} key facts an analyst would want to combine with other research later: concrete claims, numbers with their units and dates, named companies or tickers, forecasts. Each fact is one short self-contained line, e.g. "Microsoft plans 5 GW of new datacenter capacity by 2027". Skip opinions with no substance.
 
 Respond with ONLY this JSON as your final output, no markdown:
-{"topic":"","subtopic":"","title":"3-8 word title","summary":"one sentence under 140 chars","facts":["..."]}`;
+${shape}`;
+}
 
-  const content = await run(PRIMARY_MODEL, prompt, { tools, effort: url ? "medium" : "low" });
-  const out = extractJSON<Classification>(content);
-  return { ...out, facts: Array.isArray(out.facts) ? out.facts.filter(f => typeof f === "string").slice(0, 8) : [] };
+export type FileForFiling = {
+  name: string; kind: string; text: string;
+  attachment?: { type: "pdf" | "image"; mediaType: string; data: string };
+};
+
+/* read a dropped file (its extracted text, plus the PDF or image itself when sent) and choose its theme */
+export async function classifyFile(file: FileForFiling, bubbles: BubbleLite[]): Promise<Classification & { transcript?: string }> {
+  const hasText = file.text.trim().length > 200;
+  const body = `The user dropped in a FILE: "${file.name}" (${file.kind}).${file.attachment ? " The file itself is attached above." : ""}${
+    file.text ? `\nText extracted from it${file.text.length > 50000 ? " (first part)" : ""}:\n"""${file.text.slice(0, 50000)}"""` : ""}
+Base the title, summary and facts on what the file actually contains. Read charts and tables for their numbers.${
+    hasText ? "" : `\nThere is little or no extractable text, so also write "transcript": everything in the file that an analyst would want searchable later, such as all text, every number in charts and tables with labels and units, and what each chart shows. Up to about 1500 words.`}`;
+  const shape = `{"topic":"","subtopic":"","title":"3-8 word title","summary":"one sentence under 140 chars","facts":["..."]${hasText ? "" : `,"transcript":""`}}`;
+
+  const blocks: Anthropic.Beta.BetaContentBlockParam[] = [];
+  const a = file.attachment;
+  if (a?.type === "pdf") blocks.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: a.data }, title: file.name });
+  if (a?.type === "image") blocks.push({ type: "image", source: { type: "base64", media_type: a.mediaType as "image/jpeg", data: a.data } });
+  blocks.push({ type: "text", text: filingPrompt(bubbles, body, shape, 12) });
+
+  const content = await run(PRIMARY_MODEL, blocks, { effort: "medium" });
+  const out = extractJSON<Classification & { transcript?: string }>(content);
+  return { ...out, facts: cleanFacts(out.facts, 12), transcript: typeof out.transcript === "string" ? out.transcript.slice(0, 20000) : undefined };
 }
 
 /* re-cluster all notes inside one theme into sub-bubbles */

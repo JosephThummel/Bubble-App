@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, type Variants } from "motion/react";
-import { ArrowLeft, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2 } from "lucide-react";
+import { ArrowLeft, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import ItemGrid from "@/components/space/ItemGrid";
@@ -63,6 +63,8 @@ export default function Constellation() {
   const [askScope, setAskScope] = useState<string | null>(null);
   // a citation opens its note; closing the note goes back to the answer
   const [backToAsk, setBackToAsk] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [notice, setNotice] = useState("");
   const [mode, setMode] = useState<ViewMode>("orbits");
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const stageRef = useRef<HTMLDivElement>(null);
@@ -118,6 +120,37 @@ export default function Constellation() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [adding, searching, askOpen, openItemId, openInsightId, insightsOpen, dialog, focus, fid, go]);
+
+  const { addFiles } = c;
+  const takeFiles = useCallback(async (files: File[]) => {
+    const err = await addFiles(files);
+    if (err) { setNotice(err); setTimeout(() => setNotice(n => (n === err ? "" : n)), 8000); }
+  }, [addFiles]);
+
+  // Drag files anywhere over the app to save them.
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+    const enter = (e: DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; setDragging(true); };
+    const over = (e: DragEvent) => { if (hasFiles(e)) e.preventDefault(); };
+    const leave = (e: DragEvent) => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) setDragging(false); };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth = 0; setDragging(false);
+      const files = [...(e.dataTransfer?.files ?? [])];
+      if (files.length) { setAdding(false); takeFiles(files); }
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+    };
+  }, [takeFiles]);
 
   if (!c.graph) {
     return (
@@ -277,9 +310,28 @@ export default function Constellation() {
             {c.saveError}
           </motion.div>
         )}
+        {notice && !c.saveError && (
+          <motion.div key="notice" className="c-toast glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            onClick={() => setNotice("")}>
+            {notice}
+          </motion.div>
+        )}
       </AnimatePresence>
 
-      <AddSheet open={adding} onClose={() => setAdding(false)} onSubmit={c.addContent} />
+      <AnimatePresence>
+        {dragging && (
+          <motion.div className="c-dropzone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+            <motion.div className="c-dropzone-card" initial={{ scale: 0.9, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 380, damping: 28 }}>
+              <div className="c-dropzone-orb"><FileUp size={30} strokeWidth={1.6} /></div>
+              <div className="c-dropzone-title">Drop to save</div>
+              <div className="c-dropzone-sub">PDFs, images, Word, Excel, PowerPoint and text. Each one is read and filed into the right theme.</div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AddSheet open={adding} onClose={() => setAdding(false)} onSubmit={c.addContent} onFiles={takeFiles} />
       <CommandPalette open={searching} onClose={() => setSearching(false)} bubbles={bubbles} items={items}
         onPickBubble={id => go(id)} onPickItem={jumpToItem} />
       <ItemPanel item={openItem} hue={panelHue} path={openItem ? pathLabel(openItem.bubbleId, bubbles) : ""}

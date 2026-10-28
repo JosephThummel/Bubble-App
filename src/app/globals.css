@@ -561,6 +561,37 @@ button.c-cite:hover { background: hsl(var(--h) 80% 60% / 0.38); transform: trans
 .c-ask-send:disabled { opacity: 0.25; }
 .c-ask-send:active:not(:disabled) { transform: scale(0.92); }
 
+/* ---------- files ---------- */
+.c-filedrop {
+  margin-top: 10px; width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+  padding: 14px 16px; border-radius: 18px; border: 1.5px dashed var(--line-2); background: rgba(255, 255, 255, 0.025);
+  transition: background 0.2s var(--spring), border-color 0.2s;
+}
+.c-filedrop:hover:not(:disabled) { background: hsl(var(--h) 80% 60% / 0.08); border-color: hsl(var(--h) 80% 70% / 0.4); }
+.c-filedrop-icon { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; color: hsl(var(--h) 90% 80%); background: hsl(var(--h) 80% 60% / 0.14); }
+.c-filedrop-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.c-filedrop-title { font-size: 14.5px; font-weight: 600; }
+.c-filedrop-sub { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+
+.c-dropzone {
+  position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 16px; pointer-events: none;
+  background: rgba(3, 4, 10, 0.6); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.c-dropzone::before {
+  content: ""; position: absolute; inset: 14px; border-radius: 30px; border: 2px dashed hsl(var(--h) 85% 72% / 0.5);
+  animation: c-breathe 2.2s ease-in-out infinite;
+}
+.c-dropzone-card { position: relative; text-align: center; max-width: 420px; display: flex; flex-direction: column; align-items: center; }
+.c-dropzone-orb {
+  width: 96px; height: 96px; border-radius: 99px; display: grid; place-items: center; color: #fff; margin-bottom: 22px;
+  background: radial-gradient(circle at 35% 30%, hsl(var(--h) 100% 88%), hsl(var(--h) 85% 60%) 40%, hsl(var(--h) 80% 22%) 100%);
+  box-shadow: 0 0 80px hsl(var(--h) 90% 60% / 0.55), inset 0 -8px 22px rgba(0, 0, 0, 0.3);
+  animation: c-float 3s ease-in-out infinite;
+}
+.c-dropzone-title { font-family: var(--font-display); font-size: 34px; font-weight: 700; letter-spacing: -0.035em; }
+.c-dropzone-sub { margin-top: 8px; font-size: 15px; color: var(--ink-2); line-height: 1.45; }
+.c-toast { cursor: default; max-width: calc(100% - 32px); text-align: center; }
+
 /* ---------- toast ---------- */
 .c-toast { position: absolute; left: 50%; bottom: 20px; translate: -50% 0; z-index: 60; padding: 11px 18px; border-radius: 999px; font-size: 13.5px; color: #ffcfc7; }
 
