@@ -25,9 +25,9 @@ export async function prepareFile(file: File): Promise<PreparedFile> {
     if (!text.trim() && !attachment) throw new Error("This PDF is a scan and too large to read. Try a smaller copy.");
     return done("PDF", text, attachment, links);
   }
-  if (ext === "docx") return done("Word document", await docxText(file));
-  if (ext === "xlsx") return done("Spreadsheet", await xlsxText(file));
-  if (ext === "pptx") return done("Slides", await pptxText(file));
+  if (ext === "docx") return done("Word document", await docxText(file), undefined, await officeLinks(file));
+  if (ext === "xlsx") return done("Spreadsheet", await xlsxText(file), undefined, await officeLinks(file));
+  if (ext === "pptx") return done("Slides", await pptxText(file), undefined, await officeLinks(file));
   if (["doc", "xls", "ppt"].includes(ext)) throw new Error(`Old .${ext} files can't be read. Save it as .${ext}x or PDF and drop it again.`);
 
   const raw = await file.text();
@@ -37,7 +37,7 @@ export async function prepareFile(file: File): Promise<PreparedFile> {
 }
 
 // A file that is mostly a list of web addresses, rather than a document that cites a few.
-export const MAX_IMPORT_LINKS = 150;
+export const MAX_IMPORT_LINKS = 500;
 export function looksLikeLinkList(text: string, links: string[]) {
   if (links.length < 3) return false;
   const prose = text.replace(/https?:\/\/\S+/gi, "").replace(/\[page \d+\]/g, "").replace(/\s+/g, " ").trim();
@@ -49,7 +49,14 @@ export function findLinks(text: string, extra: string[] = []): string[] {
   const seen = new Set<string>(), out: string[] = [];
   for (const raw of [...extra, ...(text.match(/https?:\/\/[^\s<>"'`]+/gi) ?? [])]) {
     let u = raw.trim().replace(/[).,;:!?\]}>'"]+$/, "");
-    try { const parsed = new URL(u); if (!/^https?:$/.test(parsed.protocol) || !parsed.hostname.includes(".")) continue; parsed.hash = ""; u = parsed.toString(); }
+    try {
+      const parsed = new URL(u);
+      if (!/^https?:$/.test(parsed.protocol) || !parsed.hostname.includes(".")) continue;
+      parsed.hash = "";
+      // X share links carry tracking (?s=42&t=…); the same post should count once
+      if (/^(www\.|mobile\.)?(x|twitter)\.com$/i.test(parsed.hostname) && /\/status\/\d+/.test(parsed.pathname)) { parsed.search = ""; parsed.hostname = "x.com"; }
+      u = parsed.toString();
+    }
     catch { continue; }
     if (!seen.has(u)) { seen.add(u); out.push(u); }
   }
@@ -119,6 +126,22 @@ const xmlText = (xml: string, tag: string) =>
 const decodeXml = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
 const byNumber = (a: string, b: string) => Number(a.match(/(\d+)\.xml$/)?.[1] ?? 0) - Number(b.match(/(\d+)\.xml$/)?.[1] ?? 0);
 
+// Office files keep clickable links (text that points somewhere) in their relationship files.
+async function officeLinks(file: File): Promise<string[]> {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const links: string[] = [];
+  for (const p of Object.keys(zip.files).filter(p => p.endsWith(".rels"))) {
+    const xml = await zip.file(p)!.async("string");
+    for (const m of xml.matchAll(/<Relationship\b[^>]*>/g)) {
+      if (!/Type="[^"]*\/hyperlink"/.test(m[0])) continue;
+      const target = m[0].match(/Target="([^"]+)"/)?.[1];
+      if (target) links.push(decodeXml(target));
+    }
+  }
+  return links;
+}
+
 async function pptxText(file: File): Promise<string> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
@@ -136,16 +159,16 @@ async function pptxText(file: File): Promise<string> {
 async function xlsxText(file: File): Promise<string> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  const shared = zip.file("xl/sharedStrings.xml")
-    ? (await zip.file("xl/sharedStrings.xml")!.async("string")).split(/<\/si>/).map(si => xmlText(si, "t").join(""))
-    : [];
-  const workbook = await zip.file("xl/workbook.xml")?.async("string") ?? "";
+  // some exporters write every tag with a namespace prefix (<x:row>); drop it so one parser reads both
+  const read = async (p: string) => (await zip.file(p)?.async("string") ?? "").replace(/<(\/?)[A-Za-z][\w.-]*:(?=[A-Za-z])/g, "<$1");
+  const shared = (await read("xl/sharedStrings.xml")).split(/<\/si>/).map(si => xmlText(si, "t").join(""));
+  const workbook = await read("xl/workbook.xml");
   const names = [...workbook.matchAll(/<sheet [^>]*name="([^"]+)"/g)].map(m => decodeXml(m[1]));
   const sheets = Object.keys(zip.files).filter(p => /^xl\/worksheets\/sheet\d+\.xml$/.test(p)).sort(byNumber);
   const out: string[] = [];
   let length = 0;
   for (const [i, p] of sheets.entries()) {
-    const xml = await zip.file(p)!.async("string");
+    const xml = await read(p);
     const rows: string[] = [];
     for (const row of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
       const cells = [...row[1].matchAll(/<c ([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)].map(c => {
@@ -157,10 +180,10 @@ async function xlsxText(file: File): Promise<string> {
       });
       if (cells.some(Boolean)) rows.push(cells.join(", "));
       length += rows[rows.length - 1]?.length ?? 0;
-      if (length > MAX_TEXT) break;
+      if (length > MAX_TEXT * 4) break; // a long sheet of links is read whole; only its start is stored
     }
     out.push(`[sheet: ${names[i] ?? `Sheet ${i + 1}`}]\n${rows.join("\n")}`);
-    if (length > MAX_TEXT) break;
+    if (length > MAX_TEXT * 4) break;
   }
   return out.join("\n\n");
 }

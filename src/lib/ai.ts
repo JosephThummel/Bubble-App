@@ -88,7 +88,7 @@ export async function classify(input: string, bubbles: BubbleLite[], forceText =
   const body = url
     ? `The user saved this LINK: ${url}${note ? `\nWith their note: "${note}"` : ""}
 Use web_fetch to read the page it points to (it may be a tweet on X, a news article, a Substack post, or a blog). If fetching fails or X blocks it, use web_search to find what it says. Base the title and summary on the real content you find. If you genuinely cannot read it, set summary to "Couldn't read the link — paste the text to file it precisely." and topic to "Unsorted".`
-    : `Read this pasted content:\n"""${input.slice(0, 4000)}"""`;
+    : `Read this pasted content:\n"""${input.slice(0, 12000)}"""`;
 
   const prompt = filingPrompt(bubbles, body, `{"topic":"","subtopic":"","title":"3-8 word title","summary":"one sentence under 140 chars","facts":["..."]}`);
 
