@@ -64,5 +64,16 @@ mode on that browser is copied into their account.
   link is read and filed into its own bubble, six at a time. Pasting several links at once does the same.
 - `src/lib/x.ts` reads posts on X through the X API's post lookup (100 per request) when `X_BEARER_TOKEN`
   is set, including long posts, linked article titles and quoted posts. X bills each post read.
+- Stocks you cover are planets of their own (a bubble with a ticker). A pitch, model or filing on one
+  company is filed into its stock planet, which opens into a dashboard (`src/components/stock`): price and
+  valuation history, the forecast from your model with what the stock trades at on it
+  (`src/lib/valuation.ts`), read-throughs from the rest of your research, and your files on it.
+  Filing gives each note read-throughs to covered stocks; `src/app/api/reads` scans everything saved
+  for a newly covered stock.
+- `src/lib/filings.ts` keeps the cover, MD&A, risk factors and income statement of long 10-Ks and 10-Qs;
+  `src/lib/sec.ts` reads sec.gov filing links server-side with the `SEC_USER_AGENT` EDGAR asks for.
+- `src/lib/stocks.ts` pulls five years of daily prices and financial statements for a ticker from
+  Financial Modeling Prep when `FMP_API_KEY` is set, and works out daily P/E, EV/EBITDA and P/S from
+  trailing twelve-month figures. Tap any ticker on a note to see them.
 - `src/lib/storage.ts` saves the graph to Supabase (or `localStorage` in local mode).
 - `src/proxy.ts` keeps the sign-in session fresh and sends signed-out visitors to `/login`.

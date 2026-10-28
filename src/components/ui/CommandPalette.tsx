@@ -44,7 +44,7 @@ function PaletteBody({ onClose, bubbles, items, onPickBubble, onPickItem }: {
     const nq = normalize(q);
     const hueOf = (id: string) => bubbles.find(b => b.id === id)?.hue ?? 232;
     const bs: Hit[] = bubbles
-      .filter(b => !nq || normalize(b.name).includes(nq))
+      .filter(b => !nq || normalize(b.name).includes(nq) || (!!b.ticker && normalize(b.ticker).startsWith(nq.replace(/^\$/, ""))))
       .slice(0, nq ? 6 : 5)
       .map(b => ({ kind: "bubble", id: b.id, title: b.name, sub: `${pathLabel(b.id, bubbles)}, ${deepCount(b.id, bubbles, items)} notes`, hue: b.hue }));
     const is: Hit[] = (nq

@@ -1,14 +1,15 @@
 "use client";
 
 import { motion } from "motion/react";
-import { List, Network, Orbit } from "lucide-react";
+import { LayoutDashboard, List, Network, Orbit } from "lucide-react";
 
 export type ViewMode = "orbits" | "list" | "web";
 
 // Segmented control with a sliding thumb.
-export default function ViewSwitch({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
+// In a stock planet the first view is its dashboard rather than orbits.
+export default function ViewSwitch({ mode, onChange, dashboard }: { mode: ViewMode; onChange: (m: ViewMode) => void; dashboard?: boolean }) {
   const opts: { key: ViewMode; label: string; icon: React.ReactNode }[] = [
-    { key: "orbits", label: "Orbits", icon: <Orbit size={14} /> },
+    dashboard ? { key: "orbits", label: "Dashboard", icon: <LayoutDashboard size={14} /> } : { key: "orbits", label: "Orbits", icon: <Orbit size={14} /> },
     { key: "list", label: "List", icon: <List size={14} /> },
     { key: "web", label: "Web", icon: <Network size={14} /> },
   ];

@@ -12,6 +12,8 @@ type Props = {
   pinned?: boolean;
   satellites: number;
   moonCount?: number; // a planet's moons orbit it as larger bodies; otherwise small dots stand for notes
+  ticker?: string; // a stock planet shows its ticker on its face
+  stance?: string;
   pulse?: boolean;
   delay: number;
   onOpen: (origin: { x: number; y: number }) => void;
@@ -19,7 +21,7 @@ type Props = {
 
 // A theme or sub-topic, drawn as a lit sphere with a halo. Small moons orbit it,
 // one per saved item (up to 8), so density reads at a glance.
-export default function Orb({ name, count, hue, r, pinned, satellites, moonCount = 0, pulse, delay, onOpen }: Props) {
+export default function Orb({ name, count, hue, r, pinned, satellites, moonCount = 0, ticker, stance, pulse, delay, onOpen }: Props) {
   const big = moonCount > 0;
   const moons = big ? Math.min(moonCount, 8) : Math.min(satellites, 8);
   const style = { "--h": hue, "--r": `${r}px`, "--float": `${7 + (delay * 13) % 4}s`, "--fdelay": `${-delay * 7}s` } as CSSProperties;
@@ -35,7 +37,7 @@ export default function Orb({ name, count, hue, r, pinned, satellites, moonCount
     >
       <div className="c-orb-float">
         <motion.button
-          className={"c-orb" + (pulse ? " c-orb-pulse" : "")}
+          className={"c-orb" + (pulse ? " c-orb-pulse" : "") + (ticker ? " c-orb-stock" : "")}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.97 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -43,7 +45,7 @@ export default function Orb({ name, count, hue, r, pinned, satellites, moonCount
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
             onOpen({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
           }}
-          aria-label={`Open ${name}, ${count} ${count === 1 ? "note" : "notes"}`}
+          aria-label={`Open ${ticker ? `${ticker}, ` : ""}${name}, ${count} ${count === 1 ? "note" : "notes"}`}
         >
           <span className="c-orb-halo" />
           <span className="c-orb-body" />
@@ -55,6 +57,8 @@ export default function Orb({ name, count, hue, r, pinned, satellites, moonCount
               ))}
             </span>
           )}
+          {ticker && <span className="c-orb-ticker" style={{ fontSize: Math.max(15, Math.min(34, r * 0.3)) }}>{ticker}</span>}
+          {stance && <span className={`c-orb-stance is-${stance}`}>{stance === "watch" ? "Watching" : stance === "long" ? "Long" : "Short"}</span>}
           {pinned && <Lock className="c-orb-lock" size={Math.max(11, r * 0.16)} strokeWidth={2.2} />}
         </motion.button>
         <div className="c-orb-label">

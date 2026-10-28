@@ -1,6 +1,8 @@
 // Turns any dropped file into something the AI can read: extracted text, plus the
 // original for PDFs and images small enough to send, so charts and scans are seen too.
 
+import { focusFiling } from "@/lib/filings";
+
 export type Attachment = { type: "pdf" | "image"; mediaType: string; data: string };
 // links: every web address in the file, so a list of links can be imported one by one.
 export type PreparedFile = { name: string; kind: string; text: string; attachment?: Attachment; links: string[] };
@@ -13,7 +15,7 @@ export async function prepareFile(file: File): Promise<PreparedFile> {
   const name = file.name;
   const ext = (name.split(".").pop() || "").toLowerCase();
   const done = (kind: string, text: string, attachment?: Attachment, extraLinks: string[] = []): PreparedFile =>
-    ({ name, kind, text: tidy(text).slice(0, MAX_TEXT), attachment, links: findLinks(text, extraLinks) });
+    ({ name, kind, text: focusFiling(tidy(text), MAX_TEXT).slice(0, MAX_TEXT), attachment, links: findLinks(text, extraLinks) });
 
   if (file.type.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "heic", "bmp"].includes(ext)) {
     return done("Image", "", await shrinkImage(file));
@@ -102,7 +104,8 @@ async function pdfText(file: File): Promise<{ text: string; links: string[] }> {
   const doc = await task.promise;
   const pages: string[] = [], links: string[] = [];
   let length = 0;
-  for (let i = 1; i <= doc.numPages && length < MAX_TEXT; i++) {
+  // read well past what's stored: an annual report's discussion of results sits deep inside it
+  for (let i = 1; i <= doc.numPages && length < MAX_TEXT * 8; i++) {
     const page = await doc.getPage(i);
     // clickable links often hide the full address behind short text
     for (const a of await page.getAnnotations().catch(() => [])) if (a.subtype === "Link" && typeof a.url === "string") links.push(a.url);
@@ -155,7 +158,15 @@ async function pptxText(file: File): Promise<string> {
   return out.join("\n\n");
 }
 
-// Each sheet becomes CSV-ish rows; formulas are read as their last computed values.
+// Each sheet becomes rows of cells separated by " | ", with empty cells kept so a model's
+// years line up with their numbers; formulas are read as their last computed values.
+const colIndex = (letters?: string) => (letters ? [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1 : -1);
+// 1234.56789012 → 1234.568: the model needs the figure, not float noise
+const shortNumber = (v: string) => {
+  const x = Number(v);
+  return v === "" || !Number.isFinite(x) ? v : String(Math.abs(x) >= 100 ? Math.round(x * 100) / 100 : Number(x.toPrecision(6)));
+};
+
 async function xlsxText(file: File): Promise<string> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
@@ -171,14 +182,15 @@ async function xlsxText(file: File): Promise<string> {
     const xml = await read(p);
     const rows: string[] = [];
     for (const row of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
-      const cells = [...row[1].matchAll(/<c ([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)].map(c => {
+      const cells: string[] = [];
+      for (const c of row[1].matchAll(/<c ([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
         const type = c[1].match(/t="(\w+)"/)?.[1];
         const v = c[2]?.match(/<v>([^<]*)<\/v>/)?.[1] ?? "";
-        if (type === "s") return shared[Number(v)] ?? "";
-        if (type === "inlineStr") return xmlText(c[2] ?? "", "t").join("");
-        return decodeXml(v);
-      });
-      if (cells.some(Boolean)) rows.push(cells.join(", "));
+        const col = colIndex(c[1].match(/r="([A-Z]+)\d+"/)?.[1]);
+        const value = type === "s" ? shared[Number(v)] ?? "" : type === "inlineStr" ? xmlText(c[2] ?? "", "t").join("") : type === "str" || type === "e" ? decodeXml(v) : shortNumber(v);
+        cells[col < 0 ? cells.length : col] = value.trim();
+      }
+      if (cells.some(Boolean)) rows.push(Array.from(cells, x => x ?? "").join(" | ").replace(/(\s\|\s)+$/, ""));
       length += rows[rows.length - 1]?.length ?? 0;
       if (length > MAX_TEXT * 4) break; // a long sheet of links is read whole; only its start is stored
     }
