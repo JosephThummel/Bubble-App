@@ -27,6 +27,9 @@ create table if not exists public.insights (
 alter table public.links    enable row level security;
 alter table public.insights enable row level security;
 
+drop policy if exists "own links" on public.links;
+drop policy if exists "own insights" on public.insights;
+
 create policy "own links" on public.links
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own insights" on public.insights
