@@ -349,6 +349,9 @@ export default function Constellation() {
       {!c.connectionsReady && (
         <div className="c-banner glass">Connections are off until the database update runs. See step 6 of the setup guide.</div>
       )}
+      {c.connectionsReady && !c.detailsReady && (
+        <div className="c-banner glass">Publish dates, tickers and idea follow-ups won&apos;t be saved until the database update runs. See step 8 of the setup guide.</div>
+      )}
 
       <div role="status" aria-live="polite">
       <AnimatePresence>

@@ -47,6 +47,7 @@ export function useConstellation() {
   const [reshaping, setReshaping] = useState<string | null>(null);
   const [linking, setLinking] = useState<string | null>(null);
   const [connectionsReady, setConnectionsReady] = useState(true);
+  const [detailsReady, setDetailsReady] = useState(true);
   const activity: Activity = status.kind !== "idle" ? status
     : reshaping ? { kind: "reshaping", label: `Reshaping ${reshaping}…` }
     : linking ? { kind: "linking", label: linking }
@@ -68,6 +69,7 @@ export function useConstellation() {
         const filled = withPostDates(g);
         savedRef.current = filled; graphRef.current = filled; setGraphState(filled);
         setConnectionsReady(store.connectionsReady);
+        setDetailsReady(store.detailsReady);
         // on failure, the next change's save carries the dates instead
         if (filled !== g && store.detailsReady) store.save(g, filled).catch(() => { if (savedRef.current === filled) savedRef.current = g; });
       })
@@ -482,7 +484,7 @@ export function useConstellation() {
   const deleteBubble = useCallback((id: string) => update(cur => removeBubble(cur, id)), [update]);
 
   return {
-    graph, loadError, saveError, activity, connectionsReady, linkAll,
+    graph, loadError, saveError, activity, connectionsReady, detailsReady, linkAll,
     addContent, addFiles, reorganizeSpace, restore, findIdeas, createBubble, renameBubble, togglePin, moveItem, deleteItem, deleteBubble, dismissInsight,
   };
 }
