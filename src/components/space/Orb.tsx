@@ -11,6 +11,7 @@ type Props = {
   r: number;
   pinned?: boolean;
   satellites: number;
+  moonCount?: number; // a planet's moons orbit it as larger bodies; otherwise small dots stand for notes
   pulse?: boolean;
   delay: number;
   onOpen: (origin: { x: number; y: number }) => void;
@@ -18,8 +19,9 @@ type Props = {
 
 // A theme or sub-topic, drawn as a lit sphere with a halo. Small moons orbit it,
 // one per saved item (up to 8), so density reads at a glance.
-export default function Orb({ name, count, hue, r, pinned, satellites, pulse, delay, onOpen }: Props) {
-  const moons = Math.min(satellites, 8);
+export default function Orb({ name, count, hue, r, pinned, satellites, moonCount = 0, pulse, delay, onOpen }: Props) {
+  const big = moonCount > 0;
+  const moons = big ? Math.min(moonCount, 8) : Math.min(satellites, 8);
   const style = { "--h": hue, "--r": `${r}px`, "--float": `${7 + (delay * 13) % 4}s`, "--fdelay": `${-delay * 7}s` } as CSSProperties;
 
   return (
@@ -49,7 +51,7 @@ export default function Orb({ name, count, hue, r, pinned, satellites, pulse, de
           {moons > 0 && (
             <span className="c-orbit" style={{ "--dur": `${18 + r / 6}s` } as CSSProperties}>
               {Array.from({ length: moons }, (_, i) => (
-                <span key={i} className="c-moon" style={{ transform: `rotate(${(360 / moons) * i}deg) translateX(calc(var(--r) + ${10 + (i % 3) * 7}px))` }} />
+                <span key={i} className={big ? "c-moon c-moon-big" : "c-moon"} style={{ transform: `rotate(${(360 / moons) * i}deg) translateX(calc(var(--r) + ${big ? 16 + (i % 2) * 12 : 10 + (i % 3) * 7}px))` }} />
               ))}
             </span>
           )}
@@ -57,7 +59,7 @@ export default function Orb({ name, count, hue, r, pinned, satellites, pulse, de
         </motion.button>
         <div className="c-orb-label">
           <span className="c-orb-name">{name}</span>
-          <span className="c-orb-count">{count} {count === 1 ? "note" : "notes"}</span>
+          <span className="c-orb-count">{count} {count === 1 ? "note" : "notes"}{big ? ` in ${moonCount} ${moonCount === 1 ? "moon" : "moons"}` : ""}</span>
         </div>
       </div>
     </motion.div>

@@ -4,15 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_IMPORT_LINKS, findLinks, looksLikeLinkList, prepareFile, type PreparedFile } from "@/lib/files";
 import { createStore, type GraphStore } from "@/lib/storage";
 import {
-  REORG_MIN, SEED, applyClusters, descendantsOf, extractUrl, flattenTheme, nextHue, normalize,
-  removeBubble, removeItems, sourceFromUrl, trailOf, uid, type Bubble, type Graph, type Item, type Link,
+  REORG_MIN, SEED, applyClusters, applyPlan, pathLabel, postedOn, withPostDates, type Placement, descendantsOf, extractUrl, flattenTheme, nextHue, normalize,
+  removeBubble, removeItems, sourceFromUrl, uid, type Bubble, type Graph, type Item, type Link,
 } from "@/lib/graph";
 
-type Classification = { topic: string; subtopic: string; title: string; summary: string; facts?: string[] };
-type Connections = {
-  bonds: { otherId: string; strength: number; label: string }[];
-  insights: { itemIds: string[]; title: string; body: string }[];
-};
+type Classification = { topic: string; subtopic: string; title: string; summary: string; facts?: string[]; published?: string; kind?: string; tickers?: string[] };
+type Idea = { itemIds: string[]; title: string; body: string; kind?: string; nextStep?: string };
+type Connections = { bonds: { otherId: string; strength: number; label: string }[]; insights: Idea[] };
+const forLinking = (g: Graph) => (it: Item) => ({
+  id: it.id, theme: pathLabel(it.bubbleId, g.bubbles), title: it.title, summary: it.summary, facts: it.facts ?? [],
+  kind: it.kind ?? "", tickers: it.tickers ?? [], published: it.publishedAt ?? "",
+});
 
 export type Activity =
   | { kind: "idle" }
@@ -32,6 +34,7 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
 }
 const isXPost = (u: string) => /^https:\/\/x\.com\/[^/]+\/status\/\d+/.test(u);
 const BIG_IMPORT = 40;
+const MAX_MOONS = 7;
 const bubbleLite = (bubbles: Bubble[]) => bubbles.map(({ id, name, parentId }) => ({ id, name, parentId }));
 
 export function useConstellation() {
@@ -62,8 +65,11 @@ export function useConstellation() {
     store.load(SEED)
       .then(g => {
         if (!alive) return;
-        savedRef.current = g; graphRef.current = g; setGraphState(g);
+        const filled = withPostDates(g);
+        savedRef.current = filled; graphRef.current = filled; setGraphState(filled);
         setConnectionsReady(store.connectionsReady);
+        // on failure, the next change's save carries the dates instead
+        if (filled !== g && store.detailsReady) store.save(g, filled).catch(() => { if (savedRef.current === filled) savedRef.current = g; });
       })
       .catch(() => { if (alive) setLoadError("Couldn't load your space. Check your connection and refresh."); });
     return () => { alive = false; };
@@ -116,8 +122,7 @@ export function useConstellation() {
     const g = graphRef.current;
     const item = g?.items.find(i => i.id === itemId);
     if (!g || !item) return null;
-    const themeOf = (it: Item) => trailOf(it.bubbleId, g.bubbles)[0]?.name ?? "";
-    const note = (it: Item) => ({ id: it.id, theme: themeOf(it), title: it.title, summary: it.summary, facts: it.facts ?? [] });
+    const note = forLinking(g);
     let res: Connections;
     try {
       res = await postJSON<Connections>("/api/connect", { note: note(item), others: g.items.filter(i => i.id !== itemId).map(note) });
@@ -125,7 +130,7 @@ export function useConstellation() {
       return null;
     }
     const now = Date.now();
-    const newInsights = res.insights.map(x => ({ id: uid(), itemIds: x.itemIds, title: x.title, body: x.body, createdAt: now }));
+    const newInsights = res.insights.map(x => ({ id: uid(), itemIds: x.itemIds, title: x.title, body: x.body, createdAt: now, kind: x.kind, nextStep: x.nextStep || undefined }));
     update(cur => {
       if (!cur.items.some(i => i.id === itemId)) return cur;
       const alive = new Set(cur.items.map(i => i.id));
@@ -183,22 +188,31 @@ export function useConstellation() {
         theme = { id: uid(), name: topic.trim(), parentId: null, hue: nextHue(bubbles, null) };
         bubbles = [...bubbles, theme];
       }
+      // Into its moon: an existing one, or a new one unless the planet is organized by hand.
       let target = theme;
-      if (theme.pinned && result.subtopic) {
-        const sub = bubbles.find(b => b.parentId === theme!.id && normalize(b.name) === normalize(result.subtopic));
-        if (sub) { target = sub; label = `${theme.name} › ${sub.name}`; }
+      const moonName = result.subtopic?.trim();
+      if (moonName && normalize(moonName) !== normalize(theme.name)) {
+        let moon = bubbles.find(b => b.parentId === theme!.id && normalize(b.name) === normalize(moonName));
+        if (!moon && !theme.pinned) {
+          moon = { id: uid(), name: moonName, parentId: theme.id, hue: theme.hue };
+          bubbles = [...bubbles, moon];
+        }
+        if (moon) { target = moon; label = `${theme.name} › ${moon.name}`; }
       }
       targetId = target.id;
       themeId = theme.id;
       const item: Item = {
         id: newId, bubbleId: target.id, title: result.title || what.fallbackTitle, summary: result.summary || "",
         url: what.url, source: what.source, raw: what.raw, createdAt: Date.now(), facts: result.facts ?? [],
+        publishedAt: postedOn(what.url) || result.published || undefined, kind: result.kind || undefined, tickers: result.tickers ?? [],
       };
       return { ...cur, bubbles, items: [...cur.items, item] };
     });
     if (quiet) return themeId;
     flash({ kind: "filed", label, bubbleId: targetId }, 3800);
-    if (existing && !existing.pinned) setTimeout(() => reorg(existing.id), 400);
+    // Moons are picked at filing; regroup only once a planet has sprawled into too many.
+    const moons = graphRef.current?.bubbles.filter(b => b.parentId === themeId).length ?? 0;
+    if (existing && !existing.pinned && moons > MAX_MOONS) setTimeout(() => reorg(existing.id), 400);
     if (connectionsReady) {
       setLinking("Finding connections…");
       linkItem(newId).then(r => { setLinking(null); announceLinks(newId, r); });
@@ -275,7 +289,7 @@ export function useConstellation() {
     const g = graphRef.current;
     const byName = new Set([...themes].map(id => g?.bubbles.find(b => b.id === id)?.name).filter(Boolean));
     flash({ kind: "imported", label: `Filed ${filed} ${filed === 1 ? "link" : "links"} into ${byName.size} ${byName.size === 1 ? "bubble" : "bubbles"}` }, 5000);
-    for (const id of themes) await reorg(id);
+    for (const id of themes) if ((graphRef.current?.bubbles.filter(b => b.parentId === id).length ?? 0) > MAX_MOONS) await reorg(id);
     // Connecting is one AI call per note against every other note, so after a big import it waits for Find connections.
     const bigImport = filed > BIG_IMPORT;
     if (connectionsReady && !bigImport) linkAll();
@@ -330,6 +344,102 @@ export function useConstellation() {
   }, [fileInto, addLinks]);
 
 
+  // Read the whole space at once for ideas that only come from combining notes.
+  const ideating = useRef(false);
+  const findIdeas = useCallback(async (): Promise<string> => {
+    const g = graphRef.current;
+    if (!g || ideating.current) return "";
+    if (g.items.length < 2) return "Save a few more notes first.";
+    ideating.current = true;
+    setLinking(`Reading all ${g.items.length} notes for ideas…`);
+    try {
+      const { ideas } = await postJSON<{ ideas: Idea[] }>("/api/ideas", { notes: g.items.map(forLinking(g)), already: g.insights.map(s => s.title) });
+      const now = Date.now();
+      const fresh = ideas.map(x => ({ id: uid(), itemIds: x.itemIds, title: x.title, body: x.body, createdAt: now, kind: x.kind, nextStep: x.nextStep || undefined }));
+      update(cur => {
+        const alive = new Set(cur.items.map(i => i.id));
+        return { ...cur, insights: [...cur.insights, ...fresh.filter(x => x.itemIds.every(id => alive.has(id)))] };
+      });
+      if (fresh.length) flash({ kind: "insight", label: fresh.length === 1 ? "1 new idea" : `${fresh.length} new ideas`, insightId: fresh[0].id }, 6000);
+      return fresh.length ? "" : "No new ideas this time. Save more research and try again.";
+    } catch {
+      return "Couldn't reach the model to look for ideas. Try again in a moment.";
+    } finally {
+      ideating.current = false;
+      setLinking(null);
+    }
+  }, [update, flash]);
+
+  // Redesign the whole space as planets › moons, then place every note. Returns the graph as it
+  // was, for undo, or an error message.
+  const organizing = useRef(false);
+  const reorganizeSpace = useCallback(async (): Promise<{ before?: Graph; error?: string }> => {
+    const g = graphRef.current;
+    if (!g || organizing.current) return { error: "" };
+    organizing.current = true;
+    try {
+      const kept = new Set<string>();
+      for (const b of g.bubbles) if (b.parentId === null && b.pinned) [b.id, ...descendantsOf(b.id, g.bubbles)].forEach(id => kept.add(id));
+      const notes = g.items.filter(i => !kept.has(i.bubbleId));
+      if (notes.length < 2) return { error: "Save a few more notes first." };
+      const line = (i: Item) => `${i.title}${i.summary ? " :: " + i.summary.slice(0, 140) : ""}`;
+
+      setActivity({ kind: "reshaping", label: `Designing planets for ${notes.length} notes…` });
+      const { planets } = await postJSON<{ planets: { name: string; moons: string[] }[] }>("/api/organize", {
+        step: "plan",
+        notes: notes.map(i => `${line(i)} :: ${pathLabel(i.bubbleId, g.bubbles)}`),
+        keep: g.bubbles.filter(b => b.parentId === null && b.pinned).map(b => b.name),
+      });
+      if (!planets.length) return { error: "Couldn't design a new layout. Try again in a moment." };
+
+      const placements = new Map<string, Placement>();
+      const batches: Item[][] = [];
+      for (let k = 0; k < notes.length; k += 80) batches.push(notes.slice(k, k + 80));
+      let done = 0, next = 0, failures = 0;
+      const worker = async () => {
+        while (next < batches.length) {
+          const batch = batches[next++];
+          try {
+            const { assignments } = await postJSON<{ assignments: { n: number; planet: string; moon: string; kind: string; tickers: string[] }[] }>("/api/organize", {
+              step: "assign", plan: planets, notes: batch.map((i, n) => ({ n: n + 1, text: line(i) })),
+            });
+            for (const a of assignments) {
+              const it = batch[a.n - 1];
+              if (it) placements.set(it.id, { planet: a.planet, moon: a.moon, kind: a.kind, tickers: a.tickers });
+            }
+          } catch { failures++; }
+          done++;
+          setActivity({ kind: "reshaping", label: `Placing notes into ${planets.length} planets (${Math.min(done * 80, notes.length)} of ${notes.length})…` });
+        }
+      };
+      setActivity({ kind: "reshaping", label: `Placing notes into ${planets.length} planets…` });
+      await Promise.all(Array.from({ length: Math.min(4, batches.length) }, worker));
+      if (!placements.size) return { error: "Couldn't place the notes. Try again in a moment." };
+
+      const before = graphRef.current!;
+      update(cur => applyPlan(cur, placements));
+      const after = graphRef.current!;
+      const count = after.bubbles.filter(b => b.parentId === null).length;
+      flash({ kind: "imported", label: `Reorganized into ${count} planets` }, 5000);
+      return failures ? { before, error: `${notes.length - placements.size} notes couldn't be placed and stayed where they were.` } : { before };
+    } catch {
+      return { error: "Couldn't reach the model to reorganize. Try again in a moment." };
+    } finally {
+      organizing.current = false;
+      setActivity(a => (a.kind === "reshaping" ? { kind: "idle" } : a));
+    }
+  }, [update, flash]);
+
+  const restore = useCallback((before: Graph) => {
+    // Put bubbles and note placements back; keep notes, bonds and deductions added since.
+    update(cur => {
+      const where = new Map(before.items.map(i => [i.id, i.bubbleId]));
+      const ids = new Set(before.bubbles.map(b => b.id));
+      const newer = cur.bubbles.filter(b => !ids.has(b.id) && cur.items.some(i => i.bubbleId === b.id && !where.has(i.id)));
+      return { ...cur, bubbles: [...before.bubbles, ...newer], items: cur.items.map(i => (where.has(i.id) ? { ...i, bubbleId: where.get(i.id)! } : i)) };
+    });
+  }, [update]);
+
   const createBubble = useCallback((name: string, parentId: string | null) => {
     const nm = name.trim();
     if (!nm) return;
@@ -373,6 +483,6 @@ export function useConstellation() {
 
   return {
     graph, loadError, saveError, activity, connectionsReady, linkAll,
-    addContent, addFiles, createBubble, renameBubble, togglePin, moveItem, deleteItem, deleteBubble, dismissInsight,
+    addContent, addFiles, reorganizeSpace, restore, findIdeas, createBubble, renameBubble, togglePin, moveItem, deleteItem, deleteBubble, dismissInsight,
   };
 }

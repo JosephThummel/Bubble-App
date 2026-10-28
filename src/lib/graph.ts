@@ -24,6 +24,27 @@ export const extractUrl = (t: string) => (t.match(/https?:\/\/[^\s]+/i) || [""])
 export const sourceFromUrl = (u: string) =>
   /x\.com|twitter\.com/i.test(u) ? "X" : /substack\.com/i.test(u) ? "Substack" : u ? "Article" : "Note";
 
+// A post on X carries its time in its id (a "snowflake"), so its date is known without reading it.
+export function postedOn(url: string): string {
+  const id = url.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d{15,25})/i)?.[1];
+  if (!id) return "";
+  const ms = Number(BigInt(id) >> BigInt(22)) + 1288834974657;
+  return ms > 1.3e12 && ms < Date.now() + 864e5 ? new Date(ms).toISOString().slice(0, 10) : "";
+}
+
+// Older posts on X were saved before publish dates were kept; their ids still carry them.
+export function withPostDates(g: Graph): Graph {
+  let changed = false;
+  const items = g.items.map(i => {
+    if (i.publishedAt || !i.url) return i;
+    const d = postedOn(i.url);
+    if (!d) return i;
+    changed = true;
+    return { ...i, publishedAt: d };
+  });
+  return changed ? { ...g, items } : g;
+}
+
 export function deepCount(id: string, bubbles: Bubble[], items: Item[]): number {
   let n = items.filter(i => i.bubbleId === id).length;
   for (const k of bubbles.filter(b => b.parentId === id)) n += deepCount(k.id, bubbles, items);
@@ -107,6 +128,67 @@ export function applyClusters(g: Graph, themeId: string, clusters: { name: strin
     if (b.parentId !== themeId || keep.has(b.id)) return true;
     return bubbles.some(x => x.parentId === b.id) || items.some(i => i.bubbleId === b.id);
   });
+  return { ...g, bubbles, items };
+}
+
+export type Placement = { planet: string; moon: string; kind?: string; tickers?: string[] };
+
+// Rebuild the space as planets › moons from an AI plan. Hand-organized (pinned) planets and
+// everything in them are left alone; bubbles keep their ids and colors when their names
+// survive; notes the plan missed stay where they were; bubbles left empty are removed.
+export function applyPlan(g: Graph, placements: Map<string, Placement>): Graph {
+  const pinnedScope = new Set<string>();
+  for (const b of g.bubbles) if (b.parentId === null && b.pinned) [b.id, ...descendantsOf(b.id, g.bubbles)].forEach(id => pinnedScope.add(id));
+  let bubbles = g.bubbles.slice();
+  const planetIds = new Map<string, string>();
+  const planetFor = (name: string) => {
+    const key = normalize(name);
+    if (planetIds.has(key)) return planetIds.get(key)!;
+    let p = bubbles.find(b => b.parentId === null && normalize(b.name) === key);
+    if (p?.pinned) return p.id; // a plan naming a hand-kept planet files into it, not over it
+    if (!p) {
+      // a bubble that was a moon and is now a planet keeps its color
+      const old = bubbles.find(b => !pinnedScope.has(b.id) && normalize(b.name) === key);
+      p = { id: uid(), name: name.trim(), parentId: null, hue: old?.hue ?? nextHue(bubbles, null) };
+      bubbles.push(p);
+    }
+    planetIds.set(key, p.id);
+    return p.id;
+  };
+  const moonFor = (planetId: string, name: string) => {
+    const planet = bubbles.find(b => b.id === planetId)!;
+    if (!name.trim() || normalize(name) === normalize(planet.name)) return planetId;
+    let m = bubbles.find(b => b.parentId === planetId && normalize(b.name) === normalize(name));
+    if (!m) {
+      if (planet.pinned) return planetId;
+      m = { id: uid(), name: name.trim(), parentId: planetId, hue: planet.hue };
+      bubbles.push(m);
+    }
+    return m.id;
+  };
+  const items = g.items.map(i => {
+    const p = placements.get(i.id);
+    if (!p || pinnedScope.has(i.bubbleId) || !p.planet.trim()) return i;
+    const bubbleId = moonFor(planetFor(p.planet), p.moon);
+    return {
+      ...i, bubbleId,
+      kind: i.kind || p.kind || undefined,
+      tickers: i.tickers?.length ? i.tickers : p.tickers ?? [],
+    };
+  });
+  // Bubbles nothing lives in any more go, deepest first.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    bubbles = bubbles.filter(b => {
+      const keep = pinnedScope.has(b.id) || items.some(i => i.bubbleId === b.id) || bubbles.some(x => x.parentId === b.id);
+      if (!keep) changed = true;
+      return keep;
+    });
+  }
+  // A surviving old bubble whose parent went is lifted to the top.
+  const alive = new Set(bubbles.map(b => b.id));
+  bubbles = bubbles.map(b => (b.parentId && !alive.has(b.parentId) ? { ...b, parentId: null } : b));
   return { ...g, bubbles, items };
 }
 

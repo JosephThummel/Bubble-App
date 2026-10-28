@@ -66,7 +66,7 @@ function PaletteBody({ onClose, bubbles, items, onPickBubble, onPickItem }: {
     <>
       <div className="c-palette-input">
         <Search size={17} />
-        <input autoFocus value={q} placeholder="Search notes and themes"
+        <input autoFocus value={q} placeholder="Search notes, planets and moons"
           onChange={e => { setQ(e.target.value); setSel(0); }}
           onKeyDown={e => {
             if (e.key === "ArrowDown") { e.preventDefault(); setSel(s => Math.min(s + 1, hits.length - 1)); }

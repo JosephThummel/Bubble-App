@@ -7,11 +7,15 @@ export type Item = {
   url: string; source: string; raw: string; createdAt: number;
   facts?: string[]; // key claims and numbers pulled out when the item was read
   linkedAt?: number; // when the connections engine last looked at this item
+  publishedAt?: string; // when the article or post came out, YYYY-MM-DD, if known
+  kind?: string; // pitch, thesis, research, data, news or opinion
+  tickers?: string[]; // companies it's about, as tickers
 };
 // A bond between two saved items that the AI judged genuinely related.
 export type Link = { id: string; a: string; b: string; strength: number; label: string };
-// A takeaway the AI deduced by combining two or more items.
-export type Insight = { id: string; itemIds: string[]; title: string; body: string; createdAt: number };
+// A takeaway the AI deduced by combining two or more items. nextStep is a question the
+// analyst could run next (napkin math, a check), offered as a one-tap follow-up in Ask.
+export type Insight = { id: string; itemIds: string[]; title: string; body: string; createdAt: number; kind?: string; nextStep?: string };
 export type Graph = { bubbles: Bubble[]; items: Item[]; links: Link[]; insights: Insight[] };
 
 export interface GraphStore {
@@ -20,6 +24,8 @@ export interface GraphStore {
   save(prev: Graph, next: Graph): Promise<void>;
   // False when the database predates the connections tables (migration 0002 not run).
   readonly connectionsReady: boolean;
+  // False when the database predates the note details (migration 0003 not run).
+  readonly detailsReady: boolean;
 }
 
 const STORE_KEY = "constellation:graph:v3";
@@ -31,6 +37,7 @@ const complete = (g: Partial<Graph>): Graph => ({
 
 class LocalStore implements GraphStore {
   readonly connectionsReady = true;
+  readonly detailsReady = true;
   async load(seed: Graph) {
     try {
       const raw = localStorage.getItem(STORE_KEY);
@@ -49,9 +56,10 @@ type ItemRow = {
   id: string; bubble_id: string; title: string; summary: string;
   url: string; source: string; raw: string; created_at: number;
   facts?: string[]; linked_at?: number | null;
+  published_at?: string | null; kind?: string | null; tickers?: string[];
 };
 type LinkRow = { id: string; a: string; b: string; strength: number; label: string };
-type InsightRow = { id: string; item_ids: string[]; title: string; body: string; created_at: number };
+type InsightRow = { id: string; item_ids: string[]; title: string; body: string; created_at: number; kind?: string | null; next_step?: string | null };
 
 const toBubbleRow = (b: Bubble): BubbleRow => ({ id: b.id, name: b.name, parent_id: b.parentId, hue: b.hue, pinned: !!b.pinned });
 const fromBubbleRow = (r: BubbleRow): Bubble => ({ id: r.id, name: r.name, parentId: r.parent_id, hue: r.hue, pinned: r.pinned });
@@ -59,9 +67,11 @@ const fromItemRow = (r: ItemRow): Item => ({
   id: r.id, bubbleId: r.bubble_id, title: r.title, summary: r.summary,
   url: r.url, source: r.source, raw: r.raw, createdAt: Number(r.created_at),
   facts: r.facts ?? [], linkedAt: r.linked_at ? Number(r.linked_at) : undefined,
+  publishedAt: r.published_at || undefined, kind: r.kind || undefined, tickers: r.tickers ?? [],
 });
 const fromInsightRow = (r: InsightRow): Insight => ({
   id: r.id, itemIds: r.item_ids, title: r.title, body: r.body, createdAt: Number(r.created_at),
+  kind: r.kind || undefined, nextStep: r.next_step || undefined,
 });
 
 // Rows that are new or changed (by reference) in next, and ids gone from next.
@@ -77,6 +87,7 @@ function diff<T extends { id: string }>(prev: T[], next: T[]) {
 class SupabaseStore implements GraphStore {
   private db = createClient();
   connectionsReady = true;
+  detailsReady = true;
 
   private toItemRow(i: Item): ItemRow {
     const row: ItemRow = {
@@ -84,6 +95,7 @@ class SupabaseStore implements GraphStore {
       url: i.url || "", source: i.source, raw: i.raw, created_at: i.createdAt,
     };
     if (this.connectionsReady) { row.facts = i.facts ?? []; row.linked_at = i.linkedAt ?? null; }
+    if (this.detailsReady) { row.published_at = i.publishedAt ?? null; row.kind = i.kind ?? null; row.tickers = i.tickers ?? []; }
     return row;
   }
 
@@ -92,12 +104,14 @@ class SupabaseStore implements GraphStore {
       this.db.from("bubbles").select("id,name,parent_id,hue,pinned").order("created_at"),
       this.db.from("items").select("*").order("created_at"),
       this.db.from("links").select("id,a,b,strength,label"),
-      this.db.from("insights").select("id,item_ids,title,body,created_at").order("created_at"),
+      this.db.from("insights").select("*").order("created_at"),
     ]);
     if (b.error) throw b.error;
     if (i.error) throw i.error;
     // The connections tables arrive with migration 0002; run without them until then.
     this.connectionsReady = !l.error && !s.error && (i.data.length === 0 || "facts" in i.data[0]);
+    // Publish dates, kinds and tickers arrive with migration 0003.
+    this.detailsReady = this.connectionsReady && (i.data.length ? "published_at" in i.data[0] : await this.probeDetails());
     const links = this.connectionsReady ? (l.data as LinkRow[]) : [];
     const insights = this.connectionsReady ? (s.data as InsightRow[]).map(fromInsightRow) : [];
 
@@ -108,6 +122,12 @@ class SupabaseStore implements GraphStore {
       return local;
     }
     return { bubbles: (b.data as BubbleRow[]).map(fromBubbleRow), items: (i.data as ItemRow[]).map(fromItemRow), links, insights };
+  }
+
+  // With no rows to look at, ask for the new column directly.
+  private async probeDetails() {
+    const { error } = await this.db.from("items").select("published_at").limit(1);
+    return !error;
   }
 
   async save(prev: Graph, next: Graph) {
@@ -125,6 +145,7 @@ class SupabaseStore implements GraphStore {
       if (l.deletes.length) ops.push(this.db.from("links").delete().in("id", l.deletes));
       if (s.upserts.length) ops.push(this.db.from("insights").upsert(s.upserts.map(x => ({
         id: x.id, item_ids: x.itemIds, title: x.title, body: x.body, created_at: x.createdAt,
+        ...(this.detailsReady ? { kind: x.kind ?? null, next_step: x.nextStep ?? null } : {}),
       }))));
       if (s.deletes.length) ops.push(this.db.from("insights").delete().in("id", s.deletes));
     }

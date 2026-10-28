@@ -34,8 +34,8 @@ function NameForm({ title, sub, initial, cta, onClose, onSave }: {
   );
 }
 
-export function ConfirmDialog({ open, title, sub, cta, onClose, onConfirm }: {
-  open: boolean; title: string; sub: string; cta: string; onClose: () => void; onConfirm: () => void;
+export function ConfirmDialog({ open, title, sub, cta, tone = "danger", onClose, onConfirm }: {
+  open: boolean; title: string; sub: string; cta: string; tone?: "danger" | "primary"; onClose: () => void; onConfirm: () => void;
 }) {
   return (
     <Sheet open={open} onClose={onClose} width={420} label={title}>
@@ -43,7 +43,7 @@ export function ConfirmDialog({ open, title, sub, cta, onClose, onConfirm }: {
       <div className="c-sheet-sub">{sub}</div>
       <div className="c-sheet-foot">
         <button className="c-btn c-btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="c-btn c-btn-destructive" autoFocus onClick={() => { onConfirm(); onClose(); }}>{cta}</button>
+        <button className={"c-btn " + (tone === "danger" ? "c-btn-destructive" : "c-btn-primary")} autoFocus onClick={() => { onConfirm(); onClose(); }}>{cta}</button>
       </div>
     </Sheet>
   );

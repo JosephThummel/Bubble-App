@@ -28,7 +28,8 @@ stored in your browser. Add the Supabase variables to turn on accounts and a rea
    It creates the `bubbles` and `items` tables with row-level security so each user only sees their own data.
 3. Under **Authentication → URL Configuration**, set the Site URL to your app's URL and add
    `http://localhost:3000/auth/callback` and `https://<your-domain>/auth/callback` to the redirect URLs.
-4. Run [`supabase/migrations/0002_connections.sql`](supabase/migrations/0002_connections.sql) too.
+4. Run [`supabase/migrations/0002_connections.sql`](supabase/migrations/0002_connections.sql) and
+   [`0003_details.sql`](supabase/migrations/0003_details.sql) too.
    It adds the tables for bonds and deductions. Until it runs, the app works but connections stay off.
 5. Copy the project URL and anon key from **Project Settings → API** into `NEXT_PUBLIC_SUPABASE_URL`
    and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
@@ -46,9 +47,15 @@ mode on that browser is copied into their account.
 
 - `src/components/Constellation.tsx` is the main screen; `space/` holds the orbs and the Web view,
   `ui/` the panels and sheets.
-- `src/app/api/classify` reads a link or text and picks its theme; `src/app/api/cluster` regroups a
-  theme's notes into sub-bubbles; `src/app/api/connect` bonds a new note to related ones and writes
-  deductions from the combination; `src/app/api/ask` streams an answer with the whole scope in context.
+- The space is two levels deep: a few broad **planets** (AI, Space, …), each with **moons**
+  (AI › Infrastructure & Power). `src/app/api/classify` reads a link or text, picks its planet and moon,
+  and tags its publish date, kind (pitch, thesis, research, news, opinion) and tickers.
+  `src/app/api/organize` redesigns the whole space as planets › moons (plan, then assign in batches);
+  `src/app/api/cluster` regroups one planet's moons.
+- `src/app/api/connect` bonds a new note to related ones the way an analyst would (numbers that combine
+  into an estimate, a pitch that depends on a thesis, research that applies, contradictions) and writes
+  ideas with a suggested next step; `src/app/api/ideas` reads the whole space at once for the best
+  cross-note ideas; `src/app/api/ask` streams an answer with the whole scope in context.
   All of them run on the server so the Anthropic key never reaches the browser,
   and all require a signed-in user when Supabase is configured.
 - `src/lib/files.ts` reads dropped files in the browser. PDFs up to 2.5 MB and images also go to the model
