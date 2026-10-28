@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { CornerDownLeft, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { SourceGlyph } from "./bits";
+import { useReturnFocus } from "@/hooks/useReturnFocus";
 import { deepCount, normalize, pathLabel, type Bubble, type Item } from "@/lib/graph";
 
 type Hit =
@@ -15,6 +16,7 @@ export default function CommandPalette({ open, onClose, bubbles, items, onPickBu
   open: boolean; onClose: () => void; bubbles: Bubble[]; items: Item[];
   onPickBubble: (id: string) => void; onPickItem: (item: Item) => void;
 }) {
+  useReturnFocus(open);
   return (
     <AnimatePresence>
       {open && (
@@ -44,7 +46,7 @@ function PaletteBody({ onClose, bubbles, items, onPickBubble, onPickItem }: {
     const bs: Hit[] = bubbles
       .filter(b => !nq || normalize(b.name).includes(nq))
       .slice(0, nq ? 6 : 5)
-      .map(b => ({ kind: "bubble", id: b.id, title: b.name, sub: `${pathLabel(b.id, bubbles)} · ${deepCount(b.id, bubbles, items)} notes`, hue: b.hue }));
+      .map(b => ({ kind: "bubble", id: b.id, title: b.name, sub: `${pathLabel(b.id, bubbles)}, ${deepCount(b.id, bubbles, items)} notes`, hue: b.hue }));
     const is: Hit[] = (nq
       ? items.filter(i => normalize(i.title).includes(nq) || normalize(i.summary).includes(nq) || normalize(i.raw).includes(nq))
       : items.slice().sort((a, b) => b.createdAt - a.createdAt))

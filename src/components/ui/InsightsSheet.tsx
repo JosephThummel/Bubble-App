@@ -22,7 +22,7 @@ export default function InsightsSheet({ open, insights, onClose, onOpen }: {
             <span className="c-insight-text">
               <span className="c-insight-title">{s.title}</span>
               <span className="c-insight-snippet">{s.body}</span>
-              <span className="c-insight-meta">{s.itemIds.length} notes · {timeAgo(s.createdAt)}</span>
+              <span className="c-insight-meta">From {s.itemIds.length} notes, found {timeAgo(s.createdAt)}</span>
             </span>
           </button>
         ))}

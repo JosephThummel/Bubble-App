@@ -42,7 +42,7 @@ export function useConstellation() {
   const [linking, setLinking] = useState<string | null>(null);
   const [connectionsReady, setConnectionsReady] = useState(true);
   const activity: Activity = status.kind !== "idle" ? status
-    : reshaping ? { kind: "reshaping", label: `Reshaping ${reshaping}` }
+    : reshaping ? { kind: "reshaping", label: `Reshaping ${reshaping}…` }
     : linking ? { kind: "linking", label: linking }
     : status;
 
@@ -194,7 +194,7 @@ export function useConstellation() {
     flash({ kind: "filed", label, bubbleId: targetId }, 3800);
     if (existing && !existing.pinned) setTimeout(() => reorg(existing.id), 400);
     if (connectionsReady) {
-      setLinking("Finding connections");
+      setLinking("Finding connections…");
       linkItem(newId).then(r => { setLinking(null); announceLinks(newId, r); });
     }
   }, [update, flash, reorg, linkItem, announceLinks, connectionsReady]);
@@ -204,7 +204,7 @@ export function useConstellation() {
     if (!g || !text.trim()) return "";
     const url = extractUrl(text);
     const isX = !!url && /x\.com|twitter\.com/i.test(url);
-    setActivity({ kind: "reading", label: url ? "Reading the link" : "Reading" });
+    setActivity({ kind: "reading", label: url ? "Reading the link…" : "Reading…" });
 
     let result: Classification, readText = false;
     try {
@@ -236,7 +236,7 @@ export function useConstellation() {
       const g = graphRef.current;
       if (!g) break;
       const of = files.length > 1 ? ` (${i + 1} of ${files.length})` : "";
-      setActivity({ kind: "reading", label: `Reading ${f.name}${of}` });
+      setActivity({ kind: "reading", label: `Reading ${f.name}${of}…` });
       let prepared: PreparedFile;
       try { prepared = await prepareFile(f); }
       catch (err) { errors.push((err as Error).message); continue; }

@@ -25,9 +25,7 @@ export default function ItemGrid({ items, hue, onOpen }: { items: Item[]; hue: n
         >
           <div className="c-card-meta">
             <SourceGlyph source={it.source} />
-            <span>{it.source === "X" ? "Post on X" : it.source}</span>
-            <span className="c-dot" />
-            <span>{timeAgo(it.createdAt)}</span>
+            <span>{it.source === "X" ? "Post on X" : it.source}, {timeAgo(it.createdAt)}</span>
           </div>
           <div className="c-card-title">{it.title}</div>
           {it.summary && <div className="c-card-summary">{it.summary}</div>}

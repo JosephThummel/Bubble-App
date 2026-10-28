@@ -12,9 +12,9 @@ export default function ViewSwitch({ mode, onChange }: { mode: ViewMode; onChang
     { key: "web", label: "Web", icon: <Network size={14} /> },
   ];
   return (
-    <div className="c-seg" role="tablist" aria-label="View">
+    <div className="c-seg" role="group" aria-label="View">
       {opts.map(o => (
-        <button key={o.key} role="tab" aria-selected={mode === o.key} className={"c-seg-btn" + (mode === o.key ? " is-on" : "")} onClick={() => onChange(o.key)}>
+        <button key={o.key} aria-pressed={mode === o.key} className={"c-seg-btn" + (mode === o.key ? " is-on" : "")} onClick={() => onChange(o.key)}>
           {mode === o.key && <motion.span layoutId="seg-thumb" className="c-seg-thumb" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
           <span className="c-seg-label">{o.icon}{o.label}</span>
         </button>
