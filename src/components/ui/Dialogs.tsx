@@ -69,3 +69,49 @@ export function MoveDialog({ open, title, currentId, bubbles, onClose, onPick }:
     </Sheet>
   );
 }
+
+// Cover a stock: its own planet, keyed by ticker, with a long or short stance.
+export function CoverDialog({ open, initial, onClose, onSave }: {
+  open: boolean; initial?: { ticker: string; name: string }; onClose: () => void;
+  onSave: (ticker: string, name: string, stance?: "long" | "short" | "watch") => void;
+}) {
+  return (
+    <Sheet open={open} onClose={onClose} width={460} label="Cover a stock">
+      {open && <CoverForm initial={initial} onClose={onClose} onSave={onSave} />}
+    </Sheet>
+  );
+}
+
+function CoverForm({ initial, onClose, onSave }: {
+  initial?: { ticker: string; name: string }; onClose: () => void;
+  onSave: (ticker: string, name: string, stance?: "long" | "short" | "watch") => void;
+}) {
+  const [ticker, setTicker] = useState(initial?.ticker ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [stance, setStance] = useState<"long" | "short" | "watch">("long");
+  const valid = /^[A-Z0-9.\-^]{1,12}$/i.test(ticker.trim());
+  const save = () => { if (valid) { onSave(ticker.trim().toUpperCase(), name.trim(), stance); onClose(); } };
+  return (
+    <>
+      <div className="c-sheet-title">Cover a stock</div>
+      <div className="c-sheet-sub">It gets its own planet with a dashboard: price and valuation history, your model, your files, and read-throughs from the rest of your research.</div>
+      <div className="c-cover-row">
+        <input className="c-input c-cover-ticker" autoFocus value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())}
+          onKeyDown={e => { if (e.key === "Enter") save(); }} placeholder="Ticker, e.g. STM" aria-label="Ticker" />
+        <input className="c-input" value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") save(); }} placeholder="Company (optional)" aria-label="Company name" />
+      </div>
+      <div className="c-stock-ranges" role="group" aria-label="Stance">
+        {(["long", "short", "watch"] as const).map(s => (
+          <button key={s} className={"c-stock-range" + (stance === s ? " is-on" : "")} aria-pressed={stance === s} onClick={() => setStance(s)}>
+            {s === "long" ? "Long" : s === "short" ? "Short" : "Watching"}
+          </button>
+        ))}
+      </div>
+      <div className="c-sheet-foot">
+        <button className="c-btn c-btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="c-btn c-btn-primary" disabled={!valid} onClick={save}>Cover</button>
+      </div>
+    </>
+  );
+}

@@ -1,5 +1,6 @@
-import { classify, classifyFile, fetchTweetOEmbed, type BubbleLite, type FileForFiling } from "@/lib/ai";
+import { classify, classifyFile, cleanStockLite, fetchTweetOEmbed, type BubbleLite, type FileForFiling, type StockLite } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
+import { isSecUrl, readFiling } from "@/lib/sec";
 import { lookupTweets, tweetId, xEnabled } from "@/lib/x";
 
 export const maxDuration = 120;
@@ -9,7 +10,10 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
 
   // read: the input is content already read (a post fetched from X), so file it as text
-  const { input, bubbles, file, read } = (await request.json()) as { input?: string; bubbles?: BubbleLite[]; file?: FileForFiling; read?: boolean };
+  const { input, bubbles, file, read, stocks: rawStocks } = (await request.json()) as {
+    input?: string; bubbles?: BubbleLite[]; file?: FileForFiling; read?: boolean; stocks?: Partial<StockLite>[];
+  };
+  const stocks = (Array.isArray(rawStocks) ? rawStocks : []).slice(0, 60).map(cleanStockLite).filter(s => s.ticker);
 
   if (file) {
     const a = file.attachment;
@@ -19,7 +23,7 @@ export async function POST(request: Request) {
       const result = await classifyFile({
         name: String(file.name || "file").slice(0, 200), kind: String(file.kind || "File").slice(0, 40),
         text: typeof file.text === "string" ? file.text.slice(0, 60000) : "", attachment,
-      }, Array.isArray(bubbles) ? bubbles : []);
+      }, Array.isArray(bubbles) ? bubbles : [], stocks);
       return Response.json({ result, readText: true });
     } catch (err) {
       console.error("classify file failed", err);
@@ -28,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   if (!input || typeof input !== "string") return Response.json({ error: "input required" }, { status: 400 });
-  const text = input.slice(0, 20000);
+  const text = input.slice(0, read ? 50000 : 20000);
 
   // Read an X post first: through the X API when it's set up, else the public embed, which X often blocks.
   const url = (text.match(/https?:\/\/[^\s]+/i) || [""])[0];
@@ -42,8 +46,14 @@ export async function POST(request: Request) {
     }
   }
 
+  // SEC filings need a declared user agent, so they're read here and handed over as text.
+  if (!forceText && url && isSecUrl(url)) {
+    const filing = await readFiling(url);
+    if (filing) { contentForAI = `SEC filing (${url}):\n${filing}`; forceText = true; }
+  }
+
   try {
-    const result = await classify(contentForAI, Array.isArray(bubbles) ? bubbles : [], forceText);
+    const result = await classify(contentForAI, Array.isArray(bubbles) ? bubbles : [], stocks, forceText);
     // content: what was actually read, when it differs from what was sent, so the note keeps it
     return Response.json({ result, readText: forceText, content: contentForAI !== text ? contentForAI : undefined });
   } catch (err) {

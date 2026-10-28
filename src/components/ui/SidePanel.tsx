@@ -6,8 +6,8 @@ import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { useReturnFocus } from "@/hooks/useReturnFocus";
 
 // The right-hand glass panel (a bottom sheet on phones) used for notes and deductions.
-export default function SidePanel({ openKey, hue, eyebrow, onClose, children }: {
-  openKey: string | null; hue: number; eyebrow: ReactNode; onClose: () => void; children: ReactNode;
+export default function SidePanel({ openKey, hue, eyebrow, onClose, children, wide }: {
+  openKey: string | null; hue: number; eyebrow: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean;
 }) {
   useReturnFocus(!!openKey);
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function SidePanel({ openKey, hue, eyebrow, onClose, children }: 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
           <motion.aside
             key="panel"
-            className="c-panel glass"
+            className={"c-panel glass" + (wide ? " c-panel-wide" : "")}
             style={{ "--h": hue } as CSSProperties}
             initial={{ x: "105%" }}
             animate={{ x: 0 }}

@@ -77,6 +77,8 @@ export default function OrbField({ bubbles, allBubbles, items, pulseId, onOpen }
               pinned={n.b.pinned}
               satellites={n.n}
               moonCount={allBubbles.filter(x => x.parentId === n.id).length}
+              ticker={n.b.ticker}
+              stance={n.b.stance}
               pulse={pulseId === n.id}
               delay={i}
               onOpen={origin => onOpen(n.id, origin)}
