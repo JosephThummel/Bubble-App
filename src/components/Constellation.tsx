@@ -9,6 +9,7 @@ import OrbField from "@/components/space/OrbField";
 import Starfield from "@/components/space/Starfield";
 import WebView from "@/components/space/WebView";
 import AddSheet from "@/components/ui/AddSheet";
+import AskSheet from "@/components/ui/AskSheet";
 import CommandPalette from "@/components/ui/CommandPalette";
 import { ConfirmDialog, MoveDialog, NameDialog } from "@/components/ui/Dialogs";
 import Island from "@/components/ui/Island";
@@ -58,6 +59,10 @@ export default function Constellation() {
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [openInsightId, setOpenInsightId] = useState<string | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
+  const [askScope, setAskScope] = useState<string | null>(null);
+  // a citation opens its note; closing the note goes back to the answer
+  const [backToAsk, setBackToAsk] = useState(false);
   const [mode, setMode] = useState<ViewMode>("orbits");
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const stageRef = useRef<HTMLDivElement>(null);
@@ -105,13 +110,14 @@ export default function Constellation() {
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLElement && /input|textarea/i.test(e.target.tagName);
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSearching(s => !s); return; }
-      if (typing || adding || searching || openItemId || openInsightId || insightsOpen || dialog.kind !== "none") return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") { e.preventDefault(); setAskScope(fid); setAskOpen(o => !o); return; }
+      if (typing || adding || searching || askOpen || openItemId || openInsightId || insightsOpen || dialog.kind !== "none") return;
       if (e.key === "/") { e.preventDefault(); setSearching(true); }
       else if (e.key === "Escape" && focus) go(focus.parentId);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [adding, searching, openItemId, openInsightId, insightsOpen, dialog, focus, go]);
+  }, [adding, searching, askOpen, openItemId, openInsightId, insightsOpen, dialog, focus, fid, go]);
 
   if (!c.graph) {
     return (
@@ -151,6 +157,9 @@ export default function Constellation() {
           <kbd>⌘K</kbd>
         </button>
         <div className="c-bar-end">
+          <motion.button className="c-ask-btn" whileTap={{ scale: 0.95 }} onClick={() => { setAskScope(fid); setAskOpen(true); }} title="Ask (⌘J)">
+            <Sparkles size={15} /> <span>Ask</span>
+          </motion.button>
           <button className="c-icon-btn c-gem-btn" title="Deductions" aria-label={`Deductions, ${insights.length}`} onClick={() => setInsightsOpen(true)}>
             <Gem size={16} />
             {insights.length > 0 && <span className="c-badge">{insights.length}</span>}
@@ -200,6 +209,11 @@ export default function Constellation() {
             </span>
             <div className="c-actions">
               <ViewSwitch mode={mode} onChange={setMode} />
+              {focus && (
+                <button className="c-pill c-pill-ask" onClick={() => { setAskScope(focus.id); setAskOpen(true); }}>
+                  <Sparkles size={13} /> Ask {focus.name}
+                </button>
+              )}
               {isTheme && focus && (
                 <button className={"c-pill" + (focus.pinned ? "" : " c-pill-on")} onClick={() => c.togglePin(focus.id)}
                   title={focus.pinned ? "You organize this theme by hand" : "AI keeps this theme organized"}>
@@ -272,7 +286,7 @@ export default function Constellation() {
         items={items} links={links} insights={insights}
         onOpenItem={id => { setOpenInsightId(null); setOpenItemId(id); }}
         onOpenInsight={id => { setOpenItemId(null); setOpenInsightId(id); }}
-        onClose={() => setOpenItemId(null)}
+        onClose={() => { setOpenItemId(null); if (backToAsk) { setBackToAsk(false); setAskOpen(true); } }}
         onMove={() => openItem && setDialog({ kind: "move", itemId: openItem.id })}
         onDelete={() => openItem && setDialog({ kind: "deleteItem", itemId: openItem.id })} />
 
@@ -280,6 +294,10 @@ export default function Constellation() {
         onClose={() => setOpenInsightId(null)}
         onOpenItem={id => { setOpenInsightId(null); setOpenItemId(id); }}
         onDismiss={() => { if (openInsight) { c.dismissInsight(openInsight.id); setOpenInsightId(null); } }} />
+      <AskSheet open={askOpen} onClose={() => setAskOpen(false)} scopeId={askScope} onScope={setAskScope} focusId={fid}
+        bubbles={bubbles} items={items} insights={insights}
+        onOpenItem={id => { setAskOpen(false); setBackToAsk(true); setOpenItemId(id); }} />
+
       <InsightsSheet open={insightsOpen} insights={insights} onClose={() => setInsightsOpen(false)} onOpen={setOpenInsightId} />
 
       <Sheet open={dialog.kind === "loose"} onClose={closeDialog} width={760} label="Notes not in a sub-topic">

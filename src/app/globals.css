@@ -461,6 +461,106 @@ kbd { font-family: var(--font); font-size: 11px; color: var(--ink-3); border: 1p
 @keyframes w-pop { from { transform: scale(0); } 60% { transform: scale(1.35); } to { transform: scale(1); } }
 @keyframes w-fade { from { opacity: 0; } }
 
+/* ---------- ask ---------- */
+.c-ask-btn {
+  height: 36px; padding: 0 14px; border-radius: 99px; display: inline-flex; align-items: center; gap: 7px;
+  font-size: 14px; font-weight: 600; color: var(--ink);
+  background: linear-gradient(135deg, hsl(262 90% 66% / 0.35), hsl(212 95% 60% / 0.3));
+  border: 1px solid hsl(240 100% 85% / 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 22px hsl(250 90% 60% / 0.25);
+  transition: box-shadow 0.3s var(--spring), filter 0.2s;
+}
+.c-ask-btn:hover { filter: brightness(1.12); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 30px hsl(250 90% 60% / 0.4); }
+.c-pill-ask { color: hsl(var(--h) 90% 84%); }
+
+.c-ask {
+  width: min(760px, 100%); height: min(780px, calc(100dvh - 32px));
+  border-radius: 30px; background: var(--glass-strong);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.c-ask-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 18px 0 24px; }
+.c-ask-title { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 19px; font-weight: 650; letter-spacing: -0.02em; }
+.c-ask-title svg { color: hsl(var(--h) 90% 78%); }
+.c-ask-scopes { display: flex; gap: 6px; padding: 12px 24px 14px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.c-ask-scopes::-webkit-scrollbar { display: none; }
+.c-ask-chip {
+  flex-shrink: 0; height: 30px; padding: 0 12px; border-radius: 99px; display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 550; color: var(--ink-2); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line);
+  transition: background 0.25s var(--spring), color 0.25s, border-color 0.25s;
+}
+.c-ask-chip i { width: 7px; height: 7px; border-radius: 9px; background: hsl(var(--h) 85% 65%); box-shadow: 0 0 8px hsl(var(--h) 90% 60%); }
+.c-ask-chip:hover { color: var(--ink); background: rgba(255, 255, 255, 0.09); }
+.c-ask-chip.is-on { color: var(--ink); background: hsl(var(--h) 80% 60% / 0.18); border-color: hsl(var(--h) 80% 70% / 0.35); }
+
+.c-ask-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 24px 20px; scroll-behavior: smooth; }
+.c-ask-empty { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 0; }
+.c-ask-orb {
+  width: 68px; height: 68px; border-radius: 99px; margin-bottom: 22px;
+  background: radial-gradient(circle at 35% 30%, hsl(var(--h) 100% 90%), hsl(var(--h) 85% 62%) 38%, hsl(var(--h) 80% 22%) 100%);
+  box-shadow: 0 0 60px hsl(var(--h) 90% 60% / 0.45), inset 0 -6px 18px rgba(0, 0, 0, 0.3);
+}
+.c-ask-hello { font-family: var(--font-display); font-size: 26px; font-weight: 700; letter-spacing: -0.03em; max-width: 520px; line-height: 1.15; }
+.c-ask-sub { margin-top: 8px; font-size: 14px; color: var(--ink-3); }
+.c-ask-suggest { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: 600px; }
+.c-ask-suggestion {
+  text-align: left; padding: 14px 16px; border-radius: 16px; font-size: 14px; line-height: 1.4; color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line);
+  transition: background 0.2s var(--spring), color 0.2s, transform 0.2s var(--spring);
+}
+.c-ask-suggestion:hover:not(:disabled) { background: hsl(var(--h) 80% 60% / 0.1); color: var(--ink); }
+.c-ask-suggestion:active:not(:disabled) { transform: scale(0.98); }
+.c-ask-suggestion:disabled { opacity: 0.4; }
+
+.c-ask-turn { padding-top: 22px; }
+.c-ask-turn + .c-ask-turn { margin-top: 10px; border-top: 1px solid var(--line); }
+.c-ask-q { margin-left: auto; width: fit-content; max-width: 82%; padding: 10px 16px; border-radius: 20px 20px 6px 20px; background: hsl(var(--h) 70% 55% / 0.22); font-size: 15px; line-height: 1.45; white-space: pre-wrap; }
+.c-ask-a { margin-top: 16px; }
+.c-ask-thinking { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-3); }
+
+.c-answer { font-size: 15.5px; line-height: 1.62; color: var(--ink); }
+.c-answer p + p, .c-answer p + ul, .c-answer ul + p { margin-top: 12px; }
+.c-answer ul { list-style: none; margin-top: 8px; display: grid; gap: 6px; }
+.c-answer li { position: relative; padding-left: 18px; }
+.c-answer li::before { content: ""; position: absolute; left: 4px; top: 0.68em; width: 5px; height: 5px; border-radius: 9px; background: hsl(var(--h) 85% 70%); }
+.c-answer strong { font-weight: 650; }
+.c-answer.is-streaming > :last-child::after {
+  content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 4px; border-radius: 9px; vertical-align: 1px;
+  background: hsl(var(--h) 90% 75%); box-shadow: 0 0 10px hsl(var(--h) 90% 60%); animation: c-breathe 1s ease-in-out infinite;
+}
+.c-answer.is-streaming ul:last-child > li:last-child::after { content: none; }
+.c-cite {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin: 0 1px 0 2px; vertical-align: 2px;
+  border-radius: 6px; font-size: 11px; font-weight: 700; line-height: 1; color: hsl(var(--h) 95% 86%);
+  background: hsl(var(--h) 80% 60% / 0.2); border: 1px solid hsl(var(--h) 80% 70% / 0.25);
+  transition: background 0.2s, transform 0.2s var(--spring);
+}
+button.c-cite:hover { background: hsl(var(--h) 80% 60% / 0.38); transform: translateY(-1px); }
+.c-cite.is-missing { opacity: 0.4; }
+.c-ask-sources { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
+.c-ask-source {
+  max-width: 100%; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 5px; border-radius: 99px;
+  font-size: 12.5px; color: var(--ink-2); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line);
+  transition: background 0.2s, color 0.2s;
+}
+.c-ask-source:hover { background: rgba(255, 255, 255, 0.1); color: var(--ink); }
+.c-ask-source-n { display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 99px; font-size: 11px; font-weight: 700; color: hsl(var(--h) 95% 86%); background: hsl(var(--h) 80% 60% / 0.24); }
+.c-ask-source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+
+.c-ask-composer {
+  margin: 0 16px 16px; display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 18px;
+  border-radius: 24px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line-2);
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+.c-ask-composer:focus-within { border-color: hsl(var(--h) 80% 70% / 0.45); box-shadow: 0 0 0 4px hsl(var(--h) 80% 60% / 0.12); }
+.c-ask-composer textarea { flex: 1; resize: none; border: none; outline: none; background: none; font-size: 15.5px; line-height: 1.45; padding: 7px 0; max-height: 160px; }
+.c-ask-composer textarea::placeholder { color: var(--ink-3); }
+.c-ask-send {
+  width: 36px; height: 36px; border-radius: 99px; display: grid; place-items: center; flex-shrink: 0;
+  background: #f5f5f7; color: #0b0b10; transition: opacity 0.2s, transform 0.2s var(--spring);
+}
+.c-ask-send:disabled { opacity: 0.25; }
+.c-ask-send:active:not(:disabled) { transform: scale(0.92); }
+
 /* ---------- toast ---------- */
 .c-toast { position: absolute; left: 50%; bottom: 20px; translate: -50% 0; z-index: 60; padding: 11px 18px; border-radius: 999px; font-size: 13.5px; color: #ffcfc7; }
 
@@ -476,6 +576,13 @@ kbd { font-family: var(--font); font-size: 11px; color: var(--ink-3); border: 1p
   .c-grid { grid-template-columns: 1fr; }
   .c-field { inset: 4px 4px 16px; }
   .c-seg-btn { padding: 0 10px; }
+  .c-ask-btn { width: 36px; padding: 0; justify-content: center; }
+  .c-ask-btn span { display: none; }
+  .c-ask { height: 100%; border-radius: 26px; }
+  .c-ask-suggest { grid-template-columns: 1fr; }
+  .c-ask-hello { font-size: 22px; }
+  .c-ask-head { padding-left: 20px; }
+  .c-ask-scopes, .c-ask-scroll { padding-left: 18px; padding-right: 18px; }
   .c-panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 82dvh; }
 }
 
