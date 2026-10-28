@@ -31,7 +31,7 @@ export default function AddSheet({ open, onClose, onSubmit, onFiles }: {
   return (
     <Sheet open={open} onClose={() => !busy && onClose()} label="Save to Constellation">
       <div className="c-sheet-title">Save something</div>
-      <div className="c-sheet-sub">Paste a link to an article, Substack or tweet, paste any text, or add files. Everything gets read and filed into the right theme.</div>
+      <div className="c-sheet-sub">Paste a link to an article, Substack or tweet, a whole list of links, any text, or add files. Everything gets read and filed into the right theme.</div>
       <div className="c-compose">
         <textarea
           autoFocus
@@ -65,7 +65,7 @@ export default function AddSheet({ open, onClose, onSubmit, onFiles }: {
         <span className="c-filedrop-icon"><Paperclip size={17} /></span>
         <span className="c-filedrop-text">
           <span className="c-filedrop-title">Add files</span>
-          <span className="c-filedrop-sub">PDFs, images and screenshots, Word, Excel, PowerPoint, CSV or text. Or drop them anywhere.</span>
+          <span className="c-filedrop-sub">PDFs, images and screenshots, Word, Excel, PowerPoint, CSV or text. A PDF full of links gets each link read and filed. Or drop them anywhere.</span>
         </span>
       </button>
       <input ref={picker} type="file" multiple accept={ACCEPT} hidden

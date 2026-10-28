@@ -30,9 +30,10 @@ export default function Island({ activity, onJump, onOpenInsight, onOpenItem }: 
             onClick={onClick}
             tabIndex={clickable ? 0 : -1}
           >
+            {/* a running count, like "3 of 40", updates in place rather than cross-fading */}
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.span
-                key={activity.kind + ("label" in activity ? activity.label : "")}
+                key={activity.kind === "reading" ? "reading" : activity.kind + ("label" in activity ? activity.label : "")}
                 className="c-island-inner"
                 initial={{ opacity: 0, filter: "blur(4px)" }}
                 animate={{ opacity: 1, filter: "blur(0px)" }}
@@ -42,6 +43,7 @@ export default function Island({ activity, onJump, onOpenInsight, onOpenItem }: 
                 {activity.kind === "reading" && <><span className="c-thinking"><i /><i /><i /></span>{activity.label}</>}
                 {activity.kind === "reshaping" && <><Sparkles size={14} className="c-spin-slow" />{activity.label}</>}
                 {activity.kind === "filed" && <><span className="c-check"><Check size={12} strokeWidth={3} /></span>Filed into <strong>{activity.label}</strong></>}
+                {activity.kind === "imported" && <><span className="c-check"><Check size={12} strokeWidth={3} /></span>{activity.label}</>}
                 {activity.kind === "linking" && <><span className="c-thinking c-thinking-gold"><i /><i /><i /></span>{activity.label}</>}
                 {activity.kind === "linked" && <><Link2 size={14} className="c-gold" />{activity.label}</>}
                 {activity.kind === "insight" && <><span className="c-gem-badge"><Gem size={12} /></span><strong>{activity.label}</strong><span className="c-island-cta">View</span></>}

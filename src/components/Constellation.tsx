@@ -19,6 +19,7 @@ import ItemPanel from "@/components/ui/ItemPanel";
 import Sheet from "@/components/ui/Sheet";
 import ViewSwitch, { type ViewMode } from "@/components/ui/ViewSwitch";
 import { useConstellation } from "@/hooks/useConstellation";
+import { findLinks, looksLikeLinkList } from "@/lib/files";
 import { deepCount, descendantsOf, pathLabel, trailOf, type Item } from "@/lib/graph";
 import { signOut } from "@/lib/storage";
 import { supabaseEnabled } from "@/lib/supabase/config";
@@ -138,11 +139,18 @@ export default function Constellation() {
     return () => window.removeEventListener("keydown", onKey);
   }, [adding, searching, askOpen, openItemId, openInsightId, insightsOpen, dialog, focus, fid, go]);
 
-  const { addFiles } = c;
-  const takeFiles = useCallback(async (files: File[]) => {
-    const err = await addFiles(files);
-    if (err) { setNotice(err); setTimeout(() => setNotice(n => (n === err ? "" : n)), 8000); }
-  }, [addFiles]);
+  const { addFiles, addContent } = c;
+  const showNotice = useCallback((err: string) => {
+    if (err) { setNotice(err); setTimeout(() => setNotice(n => (n === err ? "" : n)), 10000); }
+  }, []);
+  const takeFiles = useCallback(async (files: File[]) => showNotice(await addFiles(files)), [addFiles, showNotice]);
+  // A pasted list of links imports in the background, so the sheet closes right away.
+  const submitText = useCallback(async (text: string) => {
+    if (!looksLikeLinkList(text, findLinks(text))) return addContent(text);
+    setAdding(false);
+    addContent(text).then(showNotice);
+    return "";
+  }, [addContent, showNotice]);
 
   // Drag files anywhere over the app to save them.
   useEffect(() => {
@@ -346,7 +354,7 @@ export default function Constellation() {
         )}
       </AnimatePresence>
 
-      <AddSheet open={adding} onClose={() => setAdding(false)} onSubmit={c.addContent} onFiles={takeFiles} />
+      <AddSheet open={adding} onClose={() => setAdding(false)} onSubmit={submitText} onFiles={takeFiles} />
       <CommandPalette open={searching} onClose={() => setSearching(false)} bubbles={bubbles} items={items}
         onPickBubble={id => go(id)} onPickItem={jumpToItem} />
       <ItemPanel item={openItem} hue={panelHue} path={openItem ? pathLabel(openItem.bubbleId, bubbles) : ""}

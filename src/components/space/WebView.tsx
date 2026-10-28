@@ -46,12 +46,12 @@ export default function WebView({ items, links, insights, groupOf, onOpenItem, o
     const ns: N[] = items.map(i => {
       const g = groupOf(i);
       groups.set(g.key, g.hue);
-      return { id: i.id, kind: "item", r: 7 + Math.min(7, Math.sqrt(degree.get(i.id) ?? 0) * 2.2), hue: g.hue, group: g.key, label: short(i.title) };
+      return { id: i.id, kind: "item", r: 10 + Math.min(9, Math.sqrt(degree.get(i.id) ?? 0) * 2.6), hue: g.hue, group: g.key, label: short(i.title) };
     });
     for (const s of insights) {
       const inScope = s.itemIds.filter(id => ids.has(id));
       if (inScope.length < 2) continue;
-      ns.push({ id: s.id, kind: "insight", r: 9, hue: 46, group: "", label: short(s.title, 36) });
+      ns.push({ id: s.id, kind: "insight", r: 12, hue: 46, group: "", label: short(s.title, 36) });
       for (const id of inScope) es.push({ id: `${s.id}:${id}`, kind: "insight", source: s.id, target: id, strength: 2, label: "" });
     }
     return { nodes: ns, edges: es, groups };
@@ -132,7 +132,7 @@ export default function WebView({ items, links, insights, groupOf, onOpenItem, o
     const gem = node.filter(d => d.kind === "insight").append("g").attr("class", "w-gem");
     gem.append("rect").attr("class", "w-gem-glow").attr("x", -16).attr("y", -16).attr("width", 32).attr("height", 32).attr("rx", 8).attr("transform", "rotate(45)");
     gem.append("rect").attr("class", "w-gem-core").attr("x", -7).attr("y", -7).attr("width", 14).attr("height", 14).attr("rx", 3).attr("transform", "rotate(45)");
-    node.append("text").attr("class", "w-label").attr("text-anchor", "middle").attr("dy", d => d.r + 16).text(d => d.label);
+    node.append("text").attr("class", "w-label").attr("text-anchor", "middle").attr("dy", d => d.r + 18).text(d => d.label);
 
     // hover: light up a node's neighborhood and show its bond labels
     const neighbors = new Map<string, Set<string>>();
@@ -162,7 +162,7 @@ export default function WebView({ items, links, insights, groupOf, onOpenItem, o
       .force("charge", d3.forceManyBody<N>().strength(d => (d.kind === "insight" ? -120 : -320)))
       .force("x", d3.forceX<N>(d => anchor.get(d.group)?.x ?? 0).strength(0.05))
       .force("y", d3.forceY<N>(d => anchor.get(d.group)?.y ?? 0).strength(0.05))
-      .force("collide", d3.forceCollide<N>(d => d.r + 26))
+      .force("collide", d3.forceCollide<N>(d => d.r + 32))
       .alphaDecay(reduce ? 0.2 : 0.025);
 
     const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 3])

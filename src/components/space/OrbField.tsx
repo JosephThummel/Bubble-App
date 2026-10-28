@@ -13,7 +13,7 @@ type Props = {
   onOpen: (id: string, origin: { x: number; y: number }) => void;
 };
 
-const radiusFor = (n: number) => Math.min(110, 46 + Math.sqrt(n) * 15);
+const radiusFor = (n: number) => Math.min(150, 66 + Math.sqrt(n) * 19);
 // Sub-topics share their theme's hue, nudged a little apart so siblings read as distinct.
 const hueFor = (b: Bubble, seed: number) => (b.parentId === null ? b.hue : b.hue + ((seed % 5) - 2) * 16);
 
@@ -30,6 +30,8 @@ export default function OrbField({ bubbles, allBubbles, items, pulseId, onOpen }
     return () => ro.disconnect();
   }, []);
 
+  // On a tall screen (a phone) stack the orbs in a column so they fill it and stay big.
+  const tall = size.h > size.w * 1.15;
   const nodes = useMemo(() => {
     const ns = bubbles.map(b => {
       const n = deepCount(b.id, allBubbles, items);
@@ -39,29 +41,28 @@ export default function OrbField({ bubbles, allBubbles, items, pulseId, onOpen }
     });
     const sim = d3.forceSimulation(ns as (typeof ns[number] & d3.SimulationNodeDatum)[])
       .force("charge", d3.forceManyBody().strength(-120))
-      .force("x", d3.forceX(0).strength(0.07))
-      .force("y", d3.forceY(0).strength(0.11))
-      .force("collide", d3.forceCollide<typeof ns[number]>(d => d.r + 46).iterations(4))
+      .force("x", d3.forceX(0).strength(tall ? 0.16 : 0.07))
+      .force("y", d3.forceY(0).strength(tall ? 0.035 : 0.11))
+      .force("collide", d3.forceCollide<typeof ns[number]>(d => d.r + 54).iterations(4))
       .stop();
     for (let i = 0; i < 300; i++) sim.tick();
     return ns;
-  }, [bubbles, allBubbles, items]);
+  }, [bubbles, allBubbles, items, tall]);
 
-  // fit: shrink to the viewport, never enlarge past 1
-  const scale = useMemo(() => {
-    if (!size.w || !nodes.length) return 1;
+  // fit the padded bounds (labels and the pill below included) to the viewport and center them;
+  // a sparse level may grow a little to fill it
+  const { scale, cx } = useMemo(() => {
+    if (!size.w || !nodes.length) return { scale: 1, cx: { x: 0, y: 0 } };
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const n of nodes) {
       minX = Math.min(minX, n.x - n.r - 30); maxX = Math.max(maxX, n.x + n.r + 30);
-      minY = Math.min(minY, n.y - n.r - 30); maxY = Math.max(maxY, n.y + n.r + 60);
+      minY = Math.min(minY, n.y - n.r - 30); maxY = Math.max(maxY, n.y + n.r + 110);
     }
-    return Math.min(1, size.w / (maxX - minX), size.h / (maxY - minY));
+    return {
+      scale: Math.min(1.2, size.w / (maxX - minX), size.h / (maxY - minY)),
+      cx: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+    };
   }, [nodes, size]);
-  const cx = useMemo(() => {
-    if (!nodes.length) return { x: 0, y: 0 };
-    const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
-    return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
-  }, [nodes]);
 
   return (
     <div ref={boxRef} className="c-field">

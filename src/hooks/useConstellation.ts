@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { prepareFile, type PreparedFile } from "@/lib/files";
+import { MAX_IMPORT_LINKS, findLinks, looksLikeLinkList, prepareFile, type PreparedFile } from "@/lib/files";
 import { createStore, type GraphStore } from "@/lib/storage";
 import {
   REORG_MIN, SEED, applyClusters, descendantsOf, extractUrl, flattenTheme, nextHue, normalize,
@@ -19,6 +19,7 @@ export type Activity =
   | { kind: "reading"; label: string }
   | { kind: "reshaping"; label: string }
   | { kind: "filed"; label: string; bubbleId: string }
+  | { kind: "imported"; label: string }
   | { kind: "linking"; label: string }
   | { kind: "linked"; label: string; itemId: string }
   | { kind: "insight"; label: string; insightId: string };
@@ -29,6 +30,8 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
   if (!res.ok) throw new Error(data?.error || "api error");
   return data as T;
 }
+const isXPost = (u: string) => /^https:\/\/x\.com\/[^/]+\/status\/\d+/.test(u);
+const BIG_IMPORT = 40;
 const bubbleLite = (bubbles: Bubble[]) => bubbles.map(({ id, name, parentId }) => ({ id, name, parentId }));
 
 export function useConstellation() {
@@ -166,11 +169,12 @@ export function useConstellation() {
 
   // Returns an error message to show in the save sheet, or "" when filed.
   // Put a classified save into its theme (making the theme if it's new), then reshape and link it.
-  const fileInto = useCallback((result: Classification, what: { raw: string; url: string; source: string; fallbackTitle: string }) => {
+  // In a batch (quiet) the status line belongs to the batch, and reshaping and linking wait until it ends.
+  const fileInto = useCallback((result: Classification, what: { raw: string; url: string; source: string; fallbackTitle: string }, quiet = false): string => {
     const g = graphRef.current!;
     const topic = result.topic || "Unsorted";
     const existing = g.bubbles.find(b => b.parentId === null && normalize(b.name) === normalize(topic));
-    let targetId = "", label = topic;
+    let targetId = "", themeId = "", label = topic;
     const newId = uid();
     update(cur => {
       let bubbles = cur.bubbles;
@@ -185,49 +189,117 @@ export function useConstellation() {
         if (sub) { target = sub; label = `${theme.name} › ${sub.name}`; }
       }
       targetId = target.id;
+      themeId = theme.id;
       const item: Item = {
         id: newId, bubbleId: target.id, title: result.title || what.fallbackTitle, summary: result.summary || "",
         url: what.url, source: what.source, raw: what.raw, createdAt: Date.now(), facts: result.facts ?? [],
       };
       return { ...cur, bubbles, items: [...cur.items, item] };
     });
+    if (quiet) return themeId;
     flash({ kind: "filed", label, bubbleId: targetId }, 3800);
     if (existing && !existing.pinned) setTimeout(() => reorg(existing.id), 400);
     if (connectionsReady) {
       setLinking("Finding connections…");
       linkItem(newId).then(r => { setLinking(null); announceLinks(newId, r); });
     }
+    return themeId;
   }, [update, flash, reorg, linkItem, announceLinks, connectionsReady]);
 
-  const addContent = useCallback(async (text: string): Promise<string> => {
-    const g = graphRef.current;
-    if (!g || !text.trim()) return "";
-    const url = extractUrl(text);
-    const isX = !!url && /x\.com|twitter\.com/i.test(url);
-    setActivity({ kind: "reading", label: url ? "Reading the link…" : "Reading…" });
-
-    let result: Classification, readText = false;
+  // Read pasted text or a link and decide where it goes. Returns the filing, or an error message.
+  // alreadyRead: the text is the content itself (a post fetched from X), so there's no link to open.
+  // content: the text the server actually read, when it fetched more than was sent.
+  const read = useCallback(async (text: string, alreadyRead = false): Promise<{ result: Classification; content?: string } | { error: string }> => {
+    const url = alreadyRead ? "" : extractUrl(text);
+    let result: Classification, readText = false, content: string | undefined;
     try {
-      const r = await postJSON<{ result: Classification; readText: boolean }>("/api/classify", { input: text, bubbles: bubbleLite(g.bubbles) });
-      result = r.result; readText = r.readText;
+      const r = await postJSON<{ result: Classification; readText: boolean; content?: string }>("/api/classify", { input: text, bubbles: bubbleLite(graphRef.current?.bubbles ?? []), read: alreadyRead });
+      result = r.result; readText = r.readText; content = r.content;
     } catch {
-      setActivity({ kind: "idle" });
-      return "Couldn't reach the model to read this. Try again in a moment, or paste the text.";
+      return { error: "Couldn't reach the model to read this. Try again in a moment, or paste the text." };
     }
-
     // A bare link we couldn't truly read shouldn't become a junk card.
     const unread = url && !readText &&
       (normalize(result.topic) === "unsorted" || !result.summary || normalize(result.title).includes("http"));
     if (unread) {
-      setActivity({ kind: "idle" });
-      return isX
-        ? "X blocks reading tweets from a link. Paste the tweet's text (keep the link too) and it'll file precisely."
-        : "Couldn't read that link. Paste the key text and it'll file.";
+      return {
+        error: /x\.com|twitter\.com/i.test(url)
+          ? "X blocks reading tweets from a link. Paste the tweet's text (keep the link too) and it'll file precisely."
+          : "Couldn't read that link. Paste the key text and it'll file.",
+      };
+    }
+    return { result, content };
+  }, []);
+
+  // A list of links: read a few at a time, file each into its bubble, then reshape and connect once at the end.
+  const addLinks = useCallback(async (urls: string[], from: string): Promise<string> => {
+    const have = new Set((graphRef.current?.items ?? []).map(i => i.url).filter(Boolean));
+    const todo = urls.filter(u => !have.has(u)).slice(0, MAX_IMPORT_LINKS);
+    const skipped = urls.length - todo.length;
+    if (!todo.length) return skipped ? `Every link in ${from} is already saved.` : "";
+    let next = 0, done = 0, filed = 0;
+    const failed: string[] = [];
+    const themes = new Set<string>();
+
+    // Posts on X are fetched up front through the X API, 100 per request, when it's set up.
+    const posts = new Map<string, string>();
+    const xLinks = todo.filter(isXPost);
+    let xNote = "";
+    for (let i = 0; i < xLinks.length; i += 100) {
+      setActivity({ kind: "reading", label: `Fetching posts from X (${Math.min(i + 100, xLinks.length)} of ${xLinks.length})…` });
+      try {
+        const r = await postJSON<{ enabled: boolean; tweets: Record<string, string> }>("/api/x", { urls: xLinks.slice(i, i + 100) });
+        if (!r.enabled) { xNote = "Connect the X API to read posts on X reliably (see the setup guide)."; break; }
+        for (const [u, t] of Object.entries(r.tweets)) posts.set(u, t);
+      } catch (err) { xNote = (err as Error).message; break; }
     }
 
-    fileInto(result, { raw: text, url, source: sourceFromUrl(url), fallbackTitle: text.slice(0, 60) });
+    const tick = () => setActivity({ kind: "reading", label: `Reading links from ${from} (${done} of ${todo.length})…` });
+    tick();
+    const worker = async () => {
+      while (next < todo.length) {
+        const url = todo[next++];
+        const post = posts.get(url);
+        const r = await (post ? read(`${post}\nLink: ${url}`, true) : read(url));
+        done++;
+        if ("result" in r) {
+          const raw = post ?? r.content ?? url;
+          themes.add(fileInto(r.result, { raw, url, source: sourceFromUrl(url), fallbackTitle: url }, true));
+          filed++;
+        } else failed.push(url);
+        tick();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, todo.length) }, worker));
+
+    const g = graphRef.current;
+    const byName = new Set([...themes].map(id => g?.bubbles.find(b => b.id === id)?.name).filter(Boolean));
+    flash({ kind: "imported", label: `Filed ${filed} ${filed === 1 ? "link" : "links"} into ${byName.size} ${byName.size === 1 ? "bubble" : "bubbles"}` }, 5000);
+    for (const id of themes) await reorg(id);
+    // Connecting is one AI call per note against every other note, so after a big import it waits for Find connections.
+    const bigImport = filed > BIG_IMPORT;
+    if (connectionsReady && !bigImport) linkAll();
+
+    const notes: string[] = [];
+    if (xNote) notes.push(xNote);
+    if (connectionsReady && bigImport) notes.push(`Open Web and click Find connections when you want the ${filed} new notes connected.`);
+    if (failed.length) notes.push(`${failed.length} ${failed.length === 1 ? "link" : "links"} couldn't be read (X posts and paywalled pages often can't): ${failed.slice(0, 5).join(" ")}${failed.length > 5 ? " …" : ""}`);
+    if (urls.length > MAX_IMPORT_LINKS + skipped) notes.push(`Only the first ${MAX_IMPORT_LINKS} new links were imported.`);
+    return notes.join(" ");
+  }, [read, fileInto, flash, reorg, linkAll, connectionsReady]);
+
+  const addContent = useCallback(async (text: string): Promise<string> => {
+    if (!graphRef.current || !text.trim()) return "";
+    // Several links pasted at once are imported one by one.
+    const links = findLinks(text);
+    if (looksLikeLinkList(text, links)) return addLinks(links, "your list");
+    const url = extractUrl(text);
+    setActivity({ kind: "reading", label: url ? "Reading the link…" : "Reading…" });
+    const r = await read(text);
+    if ("error" in r) { setActivity({ kind: "idle" }); return r.error; }
+    fileInto(r.result, { raw: r.content ?? text, url, source: sourceFromUrl(url), fallbackTitle: text.slice(0, 60) });
     return "";
-  }, [fileInto]);
+  }, [read, fileInto, addLinks]);
 
   // Files are read in the browser, then filed one at a time so the island can count them off.
   const addFiles = useCallback(async (files: File[]): Promise<string> => {
@@ -240,6 +312,11 @@ export function useConstellation() {
       let prepared: PreparedFile;
       try { prepared = await prepareFile(f); }
       catch (err) { errors.push((err as Error).message); continue; }
+      if (looksLikeLinkList(prepared.text, prepared.links)) {
+        const e = await addLinks(prepared.links, f.name);
+        if (e) errors.push(e);
+        continue;
+      }
       try {
         const r = await postJSON<{ result: Classification & { transcript?: string } }>("/api/classify", { file: prepared, bubbles: bubbleLite(g.bubbles) });
         const body = prepared.text || r.result.transcript || "";
@@ -250,7 +327,7 @@ export function useConstellation() {
     }
     if (errors.length) setActivity({ kind: "idle" });
     return errors.join(" ");
-  }, [fileInto]);
+  }, [fileInto, addLinks]);
 
 
   const createBubble = useCallback((name: string, parentId: string | null) => {
