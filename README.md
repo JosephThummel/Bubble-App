@@ -5,6 +5,8 @@ into a field of themed bubbles that reorganize themselves as you save. It also b
 together and writes **deductions**: takeaways you only get by combining sources, like GW of buildout
 times tokens per GW giving total compute. Switch to the **Web** view to see the whole network, and
 press **Ask** (⌘J) to question one bubble or your whole library, with answers that cite your notes.
+Drop in files too: PDFs, images and screenshots, Word, Excel, PowerPoint, CSV and text are read and filed
+like any other save.
 
 The original single-file prototype is kept in [`prototype/constellation.jsx`](prototype/constellation.jsx).
 
@@ -49,5 +51,7 @@ mode on that browser is copied into their account.
   deductions from the combination; `src/app/api/ask` streams an answer with the whole scope in context.
   All of them run on the server so the Anthropic key never reaches the browser,
   and all require a signed-in user when Supabase is configured.
+- `src/lib/files.ts` reads dropped files in the browser. PDFs up to 2.5 MB and images also go to the model
+  as-is, so it can read charts and scans; larger PDFs send their extracted text.
 - `src/lib/storage.ts` saves the graph to Supabase (or `localStorage` in local mode).
 - `src/proxy.ts` keeps the sign-in session fresh and sends signed-out visitors to `/login`.

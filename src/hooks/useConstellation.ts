@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { prepareFile, type PreparedFile } from "@/lib/files";
 import { createStore, type GraphStore } from "@/lib/storage";
 import {
   REORG_MIN, SEED, applyClusters, descendantsOf, extractUrl, flattenTheme, nextHue, normalize,
@@ -164,6 +165,40 @@ export function useConstellation() {
   }, [linkItem, announceLinks]);
 
   // Returns an error message to show in the save sheet, or "" when filed.
+  // Put a classified save into its theme (making the theme if it's new), then reshape and link it.
+  const fileInto = useCallback((result: Classification, what: { raw: string; url: string; source: string; fallbackTitle: string }) => {
+    const g = graphRef.current!;
+    const topic = result.topic || "Unsorted";
+    const existing = g.bubbles.find(b => b.parentId === null && normalize(b.name) === normalize(topic));
+    let targetId = "", label = topic;
+    const newId = uid();
+    update(cur => {
+      let bubbles = cur.bubbles;
+      let theme = bubbles.find(b => b.parentId === null && normalize(b.name) === normalize(topic));
+      if (!theme) {
+        theme = { id: uid(), name: topic.trim(), parentId: null, hue: nextHue(bubbles, null) };
+        bubbles = [...bubbles, theme];
+      }
+      let target = theme;
+      if (theme.pinned && result.subtopic) {
+        const sub = bubbles.find(b => b.parentId === theme!.id && normalize(b.name) === normalize(result.subtopic));
+        if (sub) { target = sub; label = `${theme.name} › ${sub.name}`; }
+      }
+      targetId = target.id;
+      const item: Item = {
+        id: newId, bubbleId: target.id, title: result.title || what.fallbackTitle, summary: result.summary || "",
+        url: what.url, source: what.source, raw: what.raw, createdAt: Date.now(), facts: result.facts ?? [],
+      };
+      return { ...cur, bubbles, items: [...cur.items, item] };
+    });
+    flash({ kind: "filed", label, bubbleId: targetId }, 3800);
+    if (existing && !existing.pinned) setTimeout(() => reorg(existing.id), 400);
+    if (connectionsReady) {
+      setLinking("Finding connections");
+      linkItem(newId).then(r => { setLinking(null); announceLinks(newId, r); });
+    }
+  }, [update, flash, reorg, linkItem, announceLinks, connectionsReady]);
+
   const addContent = useCallback(async (text: string): Promise<string> => {
     const g = graphRef.current;
     if (!g || !text.trim()) return "";
@@ -190,37 +225,33 @@ export function useConstellation() {
         : "Couldn't read that link. Paste the key text and it'll file.";
     }
 
-    const topic = result.topic || "Unsorted";
-    const existing = g.bubbles.find(b => b.parentId === null && normalize(b.name) === normalize(topic));
-    let targetId = "", label = topic;
-    const newId = uid();
-    update(cur => {
-      let bubbles = cur.bubbles;
-      let theme = bubbles.find(b => b.parentId === null && normalize(b.name) === normalize(topic));
-      if (!theme) {
-        theme = { id: uid(), name: topic.trim(), parentId: null, hue: nextHue(bubbles, null) };
-        bubbles = [...bubbles, theme];
-      }
-      let target = theme;
-      if (theme.pinned && result.subtopic) {
-        const sub = bubbles.find(b => b.parentId === theme!.id && normalize(b.name) === normalize(result.subtopic));
-        if (sub) { target = sub; label = `${theme.name} › ${sub.name}`; }
-      }
-      targetId = target.id;
-      const item: Item = {
-        id: newId, bubbleId: target.id, title: result.title || text.slice(0, 60), summary: result.summary || "",
-        url, source: sourceFromUrl(url), raw: text, createdAt: Date.now(), facts: result.facts ?? [],
-      };
-      return { ...cur, bubbles, items: [...cur.items, item] };
-    });
-    flash({ kind: "filed", label, bubbleId: targetId }, 3800);
-    if (existing && !existing.pinned) setTimeout(() => reorg(existing.id), 400);
-    if (connectionsReady) {
-      setLinking("Finding connections");
-      linkItem(newId).then(r => { setLinking(null); announceLinks(newId, r); });
-    }
+    fileInto(result, { raw: text, url, source: sourceFromUrl(url), fallbackTitle: text.slice(0, 60) });
     return "";
-  }, [update, flash, reorg, linkItem, announceLinks, connectionsReady]);
+  }, [fileInto]);
+
+  // Files are read in the browser, then filed one at a time so the island can count them off.
+  const addFiles = useCallback(async (files: File[]): Promise<string> => {
+    const errors: string[] = [];
+    for (const [i, f] of files.entries()) {
+      const g = graphRef.current;
+      if (!g) break;
+      const of = files.length > 1 ? ` (${i + 1} of ${files.length})` : "";
+      setActivity({ kind: "reading", label: `Reading ${f.name}${of}` });
+      let prepared: PreparedFile;
+      try { prepared = await prepareFile(f); }
+      catch (err) { errors.push((err as Error).message); continue; }
+      try {
+        const r = await postJSON<{ result: Classification & { transcript?: string } }>("/api/classify", { file: prepared, bubbles: bubbleLite(g.bubbles) });
+        const body = prepared.text || r.result.transcript || "";
+        fileInto(r.result, { raw: `File: ${f.name}\n\n${body}`.trim(), url: "", source: "File", fallbackTitle: f.name });
+      } catch {
+        errors.push(`Couldn't read ${f.name}. Try again in a moment.`);
+      }
+    }
+    if (errors.length) setActivity({ kind: "idle" });
+    return errors.join(" ");
+  }, [fileInto]);
+
 
   const createBubble = useCallback((name: string, parentId: string | null) => {
     const nm = name.trim();
@@ -265,6 +296,6 @@ export function useConstellation() {
 
   return {
     graph, loadError, saveError, activity, connectionsReady, linkAll,
-    addContent, createBubble, renameBubble, togglePin, moveItem, deleteItem, deleteBubble, dismissInsight,
+    addContent, addFiles, createBubble, renameBubble, togglePin, moveItem, deleteItem, deleteBubble, dismissInsight,
   };
 }
