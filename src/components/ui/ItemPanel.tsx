@@ -7,10 +7,10 @@ import { KIND_LABEL } from "@/components/space/ListView";
 import type { Insight, Item, Link } from "@/lib/graph";
 
 // Everything about one saved note, including what it's bonded to.
-export default function ItemPanel({ item, path, hue, items, links, insights, onClose, onMove, onDelete, onOpenItem, onOpenInsight }: {
+export default function ItemPanel({ item, path, hue, items, links, insights, onClose, onMove, onDelete, onOpenItem, onOpenInsight, onOpenTicker }: {
   item: Item | null; path: string; hue: number; items: Item[]; links: Link[]; insights: Insight[];
   onClose: () => void; onMove: () => void; onDelete: () => void;
-  onOpenItem: (id: string) => void; onOpenInsight: (id: string) => void;
+  onOpenItem: (id: string) => void; onOpenInsight: (id: string) => void; onOpenTicker: (t: string) => void;
 }) {
   const raw = item && item.raw.trim() !== item.url ? item.raw.trim() : "";
   const bonds = item
@@ -37,7 +37,9 @@ export default function ItemPanel({ item, path, hue, items, links, insights, onC
           {(item.kind || !!item.tickers?.length) && (
             <div className="c-panel-tags">
               {item.kind && <span className={`c-kind c-kind-${item.kind}`}>{KIND_LABEL[item.kind] ?? item.kind}</span>}
-              {(item.tickers ?? []).map(t => <span key={t} className="c-ticker">{t}</span>)}
+              {(item.tickers ?? []).map(t => (
+                <button key={t} className="c-ticker c-ticker-btn" onClick={() => onOpenTicker(t)} title={`Price and valuation for ${t}`}>{t}</button>
+              ))}
             </div>
           )}
           {item.summary && <p className="c-panel-summary">{item.summary}</p>}

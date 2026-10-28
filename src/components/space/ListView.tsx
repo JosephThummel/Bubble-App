@@ -37,8 +37,8 @@ const published = (i: Item) => (i.publishedAt ? new Date(`${i.publishedAt}T12:00
 
 // Every note under the current bubble as rows, like a file browser: sort by when the piece
 // came out or when it was saved, and group by moon, ticker, kind or source.
-export default function ListView({ items, bubbles, focusId, onOpen }: {
-  items: Item[]; bubbles: Bubble[]; focusId: string | null; onOpen: (id: string) => void;
+export default function ListView({ items, bubbles, focusId, onOpen, onOpenTicker }: {
+  items: Item[]; bubbles: Bubble[]; focusId: string | null; onOpen: (id: string) => void; onOpenTicker: (t: string) => void;
 }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const set = (p: Partial<typeof prefs>) => setPrefs(cur => {
@@ -113,10 +113,12 @@ export default function ListView({ items, bubbles, focusId, onOpen }: {
             const place = placeOf(it);
             const pub = published(it);
             return (
-              <motion.button key={it.id} className="c-lv-row" style={{ "--h": hueOf(it) } as CSSProperties}
+              // a div acting as a button, since the ticker chips inside are buttons of their own
+              <motion.div key={it.id} className="c-lv-row" role="button" tabIndex={0} style={{ "--h": hueOf(it) } as CSSProperties}
                 initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: Math.min(n, 20) * 0.015 }}
-                onClick={() => onOpen(it.id)}>
+                onClick={() => onOpen(it.id)}
+                onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(it.id); } }}>
                 <span className="c-lv-main">
                   <span className="c-lv-glyph"><SourceGlyph source={it.source} size={14} /></span>
                   <span className="c-lv-text">
@@ -127,11 +129,14 @@ export default function ListView({ items, bubbles, focusId, onOpen }: {
                     </span>
                   </span>
                 </span>
-                <span className="c-lv-tickers">{(it.tickers ?? []).map(t => <span key={t} className="c-ticker">{t}</span>)}</span>
+                <span className="c-lv-tickers">{(it.tickers ?? []).map(t => (
+                  <button key={t} className="c-ticker c-ticker-btn" title={`Price and valuation for ${t}`}
+                    onClick={e => { e.stopPropagation(); onOpenTicker(t); }}>{t}</button>
+                ))}</span>
                 <span className="c-lv-kind">{it.kind ? <span className={`c-kind c-kind-${it.kind}`}>{KIND_LABEL[it.kind] ?? it.kind}</span> : null}</span>
                 <span className="c-lv-date">{pub ? fmtDate(pub) : <span className="c-lv-none">—</span>}</span>
                 <span className="c-lv-date">{fmtDate(new Date(it.createdAt))}</span>
-              </motion.button>
+              </motion.div>
             );
           })}
         </section>

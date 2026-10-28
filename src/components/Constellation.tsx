@@ -17,6 +17,7 @@ import Island from "@/components/ui/Island";
 import InsightPanel from "@/components/ui/InsightPanel";
 import InsightsSheet from "@/components/ui/InsightsSheet";
 import ItemPanel from "@/components/ui/ItemPanel";
+import StockPanel from "@/components/ui/StockPanel";
 import Sheet from "@/components/ui/Sheet";
 import ViewSwitch, { type ViewMode } from "@/components/ui/ViewSwitch";
 import { useConstellation } from "@/hooks/useConstellation";
@@ -63,6 +64,7 @@ export default function Constellation() {
   const [searching, setSearching] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [openInsightId, setOpenInsightId] = useState<string | null>(null);
+  const [stockSymbol, setStockSymbol] = useState<string | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [askScope, setAskScope] = useState<string | null>(null);
@@ -136,13 +138,13 @@ export default function Constellation() {
       const typing = e.target instanceof HTMLElement && /input|textarea/i.test(e.target.tagName);
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSearching(s => !s); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") { e.preventDefault(); setAskScope(fid); setAskOpen(o => !o); return; }
-      if (typing || adding || searching || askOpen || openItemId || openInsightId || insightsOpen || dialog.kind !== "none") return;
+      if (typing || adding || searching || askOpen || openItemId || openInsightId || stockSymbol || insightsOpen || dialog.kind !== "none") return;
       if (e.key === "/") { e.preventDefault(); setSearching(true); }
       else if (e.key === "Escape" && focus) go(focus.parentId);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [adding, searching, askOpen, openItemId, openInsightId, insightsOpen, dialog, focus, fid, go]);
+  }, [adding, searching, askOpen, openItemId, openInsightId, stockSymbol, insightsOpen, dialog, focus, fid, go]);
 
   const { addFiles, addContent, reorganizeSpace } = c;
   const runReorganize = useCallback(async () => {
@@ -314,7 +316,7 @@ export default function Constellation() {
             initial="enter" animate="center" exit="exit">
             {mode === "list" && scopeItems.length ? (
               <div className="c-scroll">
-                <ListView items={scopeItems} bubbles={bubbles} focusId={fid} onOpen={setOpenItemId} />
+                <ListView items={scopeItems} bubbles={bubbles} focusId={fid} onOpen={setOpenItemId} onOpenTicker={setStockSymbol} />
               </div>
             ) : mode === "web" && scopeItems.length ? (
               <WebView items={scopeItems} links={links} insights={insights} groupOf={groupOf}
@@ -395,9 +397,13 @@ export default function Constellation() {
         items={items} links={links} insights={insights}
         onOpenItem={id => { setOpenInsightId(null); setOpenItemId(id); }}
         onOpenInsight={id => { setOpenItemId(null); setOpenInsightId(id); }}
+        onOpenTicker={t => { setOpenItemId(null); setStockSymbol(t); }}
         onClose={() => { setOpenItemId(null); if (backToAsk) { setBackToAsk(false); setAskOpen(true); } }}
         onMove={() => openItem && setDialog({ kind: "move", itemId: openItem.id })}
         onDelete={() => openItem && setDialog({ kind: "deleteItem", itemId: openItem.id })} />
+
+      <StockPanel symbol={stockSymbol} items={items} onClose={() => setStockSymbol(null)}
+        onOpenItem={id => { setStockSymbol(null); setOpenItemId(id); }} />
 
       <InsightPanel insight={openInsight} items={items} pathOf={it => pathLabel(it.bubbleId, bubbles)}
         onClose={() => setOpenInsightId(null)}
