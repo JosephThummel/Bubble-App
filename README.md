@@ -53,5 +53,7 @@ mode on that browser is copied into their account.
   and all require a signed-in user when Supabase is configured.
 - `src/lib/files.ts` reads dropped files in the browser. PDFs up to 2.5 MB and images also go to the model
   as-is, so it can read charts and scans; larger PDFs send their extracted text.
+  A file that is mostly web addresses (say, a PDF reading list) is imported link by link instead: each
+  link is read and filed into its own bubble, four at a time. Pasting several links at once does the same.
 - `src/lib/storage.ts` saves the graph to Supabase (or `localStorage` in local mode).
 - `src/proxy.ts` keeps the sign-in session fresh and sends signed-out visitors to `/login`.
