@@ -31,7 +31,7 @@ export default function AddSheet({ open, onClose, onSubmit, onFiles }: {
   return (
     <Sheet open={open} onClose={() => !busy && onClose()} label="Save to Constellation">
       <div className="c-sheet-title">Save something</div>
-      <div className="c-sheet-sub">Paste a link to an article, Substack or tweet, a whole list of links, any text, or add files. Everything gets read and filed into the right theme.</div>
+      <div className="c-sheet-sub">Paste a link to an article, Substack or tweet, a whole list of links, any text, or add files. Everything gets read and filed into the right planet.</div>
       <div className="c-compose">
         <textarea
           autoFocus

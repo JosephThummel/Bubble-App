@@ -11,9 +11,10 @@ type Turn = { id: string; q: string; a: string; refs: string[]; state: "thinking
 
 // Ask a question of one bubble or the whole library. The whole scope goes to the
 // model as context, and the answer streams back citing notes as [n].
-export default function AskSheet({ open, onClose, scopeId, onScope, focusId, bubbles, items, insights, onOpenItem }: {
+export default function AskSheet({ open, onClose, scopeId, onScope, focusId, bubbles, items, insights, onOpenItem, pending, onPendingUsed }: {
   open: boolean; onClose: () => void; scopeId: string | null; onScope: (id: string | null) => void; focusId: string | null;
   bubbles: Bubble[]; items: Item[]; insights: Insight[]; onOpenItem: (id: string) => void;
+  pending?: string | null; onPendingUsed?: () => void; // a question to ask as soon as the sheet opens
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
@@ -76,6 +77,7 @@ export default function AskSheet({ open, onClose, scopeId, onScope, focusId, bub
       notes: scopeItems.map(i => ({
         theme: pathLabel(i.bubbleId, bubbles), title: i.title, summary: i.summary, facts: i.facts ?? [], source: i.source,
         url: i.url, date: new Date(i.createdAt).toISOString().slice(0, 10), text: i.raw,
+        published: i.publishedAt ?? "", kind: i.kind ?? "", tickers: i.tickers ?? [],
       })),
       deductions: insights.filter(s => s.itemIds.every(x => num.has(x)))
         .map(s => ({ title: s.title, body: s.body, notes: s.itemIds.map(x => num.get(x)!) })),
@@ -99,6 +101,15 @@ export default function AskSheet({ open, onClose, scopeId, onScope, focusId, bub
       patch(t => ({ ...t, state: "done", a: t.a || (stopped ? "Stopped." : "Couldn't reach the model. Try again in a moment.") }));
     }
   };
+
+  // a follow-up handed over from an idea ("run the napkin math") is asked right away
+  useEffect(() => {
+    if (!open || !pending || busy) return;
+    const t = setTimeout(() => { send(pending); onPendingUsed?.(); }, 250);
+    return () => clearTimeout(t);
+    // send reads the latest state each render; only a new pending question should trigger this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pending]);
 
   const name = scope ? scope.name : "all your research";
   const suggestions = [

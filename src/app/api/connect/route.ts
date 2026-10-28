@@ -1,15 +1,7 @@
-import { connect, type NoteForLinking } from "@/lib/ai";
+import { cleanNote as clean, connect, type NoteForLinking } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 
 export const maxDuration = 120;
-
-const clean = (n: Partial<NoteForLinking>): NoteForLinking => ({
-  id: String(n.id ?? ""),
-  theme: String(n.theme ?? "").slice(0, 80),
-  title: String(n.title ?? "").slice(0, 200),
-  summary: String(n.summary ?? "").slice(0, 400),
-  facts: Array.isArray(n.facts) ? n.facts.slice(0, 8).map(f => String(f).slice(0, 240)) : [],
-});
 
 export async function POST(request: Request) {
   const auth = await requireUser();

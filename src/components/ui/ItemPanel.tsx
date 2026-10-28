@@ -3,6 +3,7 @@
 import { ArrowUpRight, FolderInput, Gem, Trash2 } from "lucide-react";
 import SidePanel from "./SidePanel";
 import { SourceGlyph, timeAgo } from "./bits";
+import { KIND_LABEL } from "@/components/space/ListView";
 import type { Insight, Item, Link } from "@/lib/graph";
 
 // Everything about one saved note, including what it's bonded to.
@@ -26,9 +27,19 @@ export default function ItemPanel({ item, path, hue, items, links, insights, onC
         <>
           <div className="c-panel-meta">
             <SourceGlyph source={item.source} />
-            <span>{item.source === "X" ? "Post on X" : item.source === "File" ? "File" : item.source}, saved {timeAgo(item.createdAt)}</span>
+            <span>
+              {item.source === "X" ? "Post on X" : item.source === "File" ? "File" : item.source}
+              {item.publishedAt ? `, published ${new Date(`${item.publishedAt}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : ""}
+              , saved {timeAgo(item.createdAt)}
+            </span>
           </div>
           <h2 className="c-panel-title">{item.title}</h2>
+          {(item.kind || !!item.tickers?.length) && (
+            <div className="c-panel-tags">
+              {item.kind && <span className={`c-kind c-kind-${item.kind}`}>{KIND_LABEL[item.kind] ?? item.kind}</span>}
+              {(item.tickers ?? []).map(t => <span key={t} className="c-ticker">{t}</span>)}
+            </div>
+          )}
           {item.summary && <p className="c-panel-summary">{item.summary}</p>}
           {item.url && (
             <a className="c-panel-link" href={item.url} target="_blank" rel="noreferrer">

@@ -1,10 +1,11 @@
 "use client";
 
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react";
-import { ArrowLeft, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2 } from "lucide-react";
+import { ArrowLeft, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import ItemGrid from "@/components/space/ItemGrid";
+import ListView from "@/components/space/ListView";
 import OrbField from "@/components/space/OrbField";
 import Starfield from "@/components/space/Starfield";
 import WebView from "@/components/space/WebView";
@@ -20,7 +21,7 @@ import Sheet from "@/components/ui/Sheet";
 import ViewSwitch, { type ViewMode } from "@/components/ui/ViewSwitch";
 import { useConstellation } from "@/hooks/useConstellation";
 import { findLinks, looksLikeLinkList } from "@/lib/files";
-import { deepCount, descendantsOf, pathLabel, trailOf, type Item } from "@/lib/graph";
+import { deepCount, descendantsOf, pathLabel, trailOf, type Graph, type Item } from "@/lib/graph";
 import { signOut } from "@/lib/storage";
 import { supabaseEnabled } from "@/lib/supabase/config";
 
@@ -47,7 +48,8 @@ type Dialog =
   | { kind: "delete"; id: string }
   | { kind: "move"; itemId: string }
   | { kind: "deleteItem"; itemId: string }
-  | { kind: "loose" };
+  | { kind: "loose" }
+  | { kind: "reorganize" };
 
 export default function Constellation() {
   const router = useRouter();
@@ -64,12 +66,15 @@ export default function Constellation() {
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [askScope, setAskScope] = useState<string | null>(null);
+  const [askPending, setAskPending] = useState<string | null>(null);
   // a citation opens its note; closing the note goes back to the answer
   const [backToAsk, setBackToAsk] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState("");
   const [mode, setMode] = useState<ViewMode>("orbits");
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
+  // the space as it was before a reorganize, offered back for a while as Undo
+  const [undoPlan, setUndoPlan] = useState<Graph | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   const bubbles = useMemo(() => c.graph?.bubbles ?? [], [c.graph]);
@@ -139,7 +144,17 @@ export default function Constellation() {
     return () => window.removeEventListener("keydown", onKey);
   }, [adding, searching, askOpen, openItemId, openInsightId, insightsOpen, dialog, focus, fid, go]);
 
-  const { addFiles, addContent } = c;
+  const { addFiles, addContent, reorganizeSpace } = c;
+  const runReorganize = useCallback(async () => {
+    go(null);
+    const r = await reorganizeSpace();
+    if (r.error) setNotice(r.error);
+    if (r.before) {
+      const before = r.before;
+      setUndoPlan(before);
+      setTimeout(() => setUndoPlan(u => (u === before ? null : u)), 30000);
+    }
+  }, [reorganizeSpace, go]);
   const showNotice = useCallback((err: string) => {
     if (err) { setNotice(err); setTimeout(() => setNotice(n => (n === err ? "" : n)), 10000); }
   }, []);
@@ -219,7 +234,7 @@ export default function Constellation() {
           <motion.button className="c-ask-btn" whileTap={{ scale: 0.95 }} onClick={() => { setAskScope(fid); setAskOpen(true); }} title="Ask (⌘J)">
             <Sparkles size={15} /> <span>Ask</span>
           </motion.button>
-          <button className="c-icon-btn c-gem-btn" title="Deductions" aria-label={`Deductions, ${insights.length}`} onClick={() => setInsightsOpen(true)}>
+          <button className="c-icon-btn c-gem-btn" title="Ideas" aria-label={`Ideas, ${insights.length}`} onClick={() => setInsightsOpen(true)}>
             <Gem size={16} />
             {insights.length > 0 && <span className="c-badge">{insights.length}</span>}
           </button>
@@ -263,18 +278,24 @@ export default function Constellation() {
           <div className="c-hero-row">
             <span className="c-meta">
               {focus
-                ? `${deepCount(focus.id, bubbles, items)} notes${children.length ? ` in ${children.length} sub-topics` : ""}`
-                : `${total} ${total === 1 ? "note" : "notes"} across ${themes} ${themes === 1 ? "theme" : "themes"}`}
+                ? `${deepCount(focus.id, bubbles, items)} notes${children.length ? ` in ${children.length} ${children.length === 1 ? "moon" : "moons"}` : ""}`
+                : `${total} ${total === 1 ? "note" : "notes"} across ${themes} ${themes === 1 ? "planet" : "planets"}`}
             </span>
             <div className="c-actions">
               <ViewSwitch mode={mode} onChange={setMode} />
               {isTheme && focus && (
                 <button className={"c-pill" + (focus.pinned ? "" : " c-pill-on")} onClick={() => c.togglePin(focus.id)}
-                  title={focus.pinned ? "You organize this theme by hand" : "AI keeps this theme organized"}>
+                  title={focus.pinned ? "You organize this planet by hand" : "AI keeps this planet organized"}>
                   {focus.pinned ? <><Lock size={13} /> Manual</> : <><Sparkles size={13} /> Auto-organizing</>}
                 </button>
               )}
-              <button className="c-icon-btn" title={focus ? "New sub-topic" : "New theme"} aria-label={focus ? "New sub-topic" : "New theme"}
+              {!focus && total > 1 && (
+                <button className="c-pill" onClick={() => setDialog({ kind: "reorganize" })} disabled={c.activity.kind === "reshaping"}
+                  title="Regroup everything into a few broad planets with moons">
+                  <Wand2 size={13} /> Reorganize
+                </button>
+              )}
+              <button className="c-icon-btn" title={focus ? "New moon" : "New planet"} aria-label={focus ? "New moon" : "New planet"}
                 onClick={() => setDialog({ kind: "create", parentId: fid })}><Plus size={16} /></button>
               {focus && (
                 <>
@@ -291,7 +312,11 @@ export default function Constellation() {
         <AnimatePresence initial={false} custom={nav}>
           <motion.div key={`${fid ?? "root"}:${mode}`} className="c-level" custom={nav} variants={levelVariants}
             initial="enter" animate="center" exit="exit">
-            {mode === "web" && scopeItems.length ? (
+            {mode === "list" && scopeItems.length ? (
+              <div className="c-scroll">
+                <ListView items={scopeItems} bubbles={bubbles} focusId={fid} onOpen={setOpenItemId} />
+              </div>
+            ) : mode === "web" && scopeItems.length ? (
               <WebView items={scopeItems} links={links} insights={insights} groupOf={groupOf}
                 onOpenItem={setOpenItemId} onOpenInsight={setOpenInsightId} />
             ) : showOrbs ? (
@@ -315,7 +340,7 @@ export default function Constellation() {
           {mode === "orbits" && showOrbs && here.length > 0 && (
             <motion.button key="loose" className="c-loose glass" onClick={() => setDialog({ kind: "loose" })}
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}>
-              <StickyNote size={14} /> {here.length} {here.length === 1 ? "note" : "notes"} not in a sub-topic
+              <StickyNote size={14} /> {here.length} {here.length === 1 ? "note" : "notes"} not in a moon
             </motion.button>
           )}
         </AnimatePresence>
@@ -323,6 +348,9 @@ export default function Constellation() {
 
       {!c.connectionsReady && (
         <div className="c-banner glass">Connections are off until the database update runs. See step 6 of the setup guide.</div>
+      )}
+      {c.connectionsReady && !c.detailsReady && (
+        <div className="c-banner glass">Publish dates, tickers and idea follow-ups won&apos;t be saved until the database update runs. See step 8 of the setup guide.</div>
       )}
 
       <div role="status" aria-live="polite">
@@ -332,7 +360,13 @@ export default function Constellation() {
             {c.saveError}
           </motion.div>
         )}
-        {notice && !c.saveError && (
+        {undoPlan && !c.saveError && (
+          <motion.div key="undo" className="c-toast glass c-toast-action" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}>
+            <span>Your space has been reorganized.</span>
+            <button className="c-btn c-btn-ghost" onClick={() => { c.restore(undoPlan); setUndoPlan(null); }}>Undo</button>
+          </motion.div>
+        )}
+        {notice && !c.saveError && !undoPlan && (
           <motion.div key="notice" className="c-toast glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
             onClick={() => setNotice("")}>
             {notice}
@@ -348,7 +382,7 @@ export default function Constellation() {
               transition={{ type: "spring", stiffness: 380, damping: 28 }}>
               <div className="c-dropzone-orb"><FileUp size={30} strokeWidth={1.6} /></div>
               <div className="c-dropzone-title">Drop to save</div>
-              <div className="c-dropzone-sub">PDFs, images, Word, Excel, PowerPoint and text. Each one is read and filed into the right theme.</div>
+              <div className="c-dropzone-sub">PDFs, images, Word, Excel, PowerPoint and text. Each one is read and filed into the right planet.</div>
             </motion.div>
           </motion.div>
         )}
@@ -368,15 +402,17 @@ export default function Constellation() {
       <InsightPanel insight={openInsight} items={items} pathOf={it => pathLabel(it.bubbleId, bubbles)}
         onClose={() => setOpenInsightId(null)}
         onOpenItem={id => { setOpenInsightId(null); setOpenItemId(id); }}
-        onDismiss={() => { if (openInsight) { c.dismissInsight(openInsight.id); setOpenInsightId(null); } }} />
+        onDismiss={() => { if (openInsight) { c.dismissInsight(openInsight.id); setOpenInsightId(null); } }}
+        onRun={q => { setOpenInsightId(null); setAskScope(null); setAskPending(q); setAskOpen(true); }} />
       <AskSheet open={askOpen} onClose={() => setAskOpen(false)} scopeId={askScope} onScope={setAskScope} focusId={fid}
-        bubbles={bubbles} items={items} insights={insights}
+        bubbles={bubbles} items={items} insights={insights} pending={askPending} onPendingUsed={() => setAskPending(null)}
         onOpenItem={id => { setAskOpen(false); setBackToAsk(true); setOpenItemId(id); }} />
 
-      <InsightsSheet open={insightsOpen} insights={insights} onClose={() => setInsightsOpen(false)} onOpen={setOpenInsightId} />
+      <InsightsSheet open={insightsOpen} insights={insights} onClose={() => setInsightsOpen(false)} onOpen={setOpenInsightId}
+        onFind={c.findIdeas} count={items.length} />
 
-      <Sheet open={dialog.kind === "loose"} onClose={closeDialog} width={760} label="Notes not in a sub-topic">
-        <div className="c-sheet-title">Not in a sub-topic</div>
+      <Sheet open={dialog.kind === "loose"} onClose={closeDialog} width={760} label="Notes not in a moon">
+        <div className="c-sheet-title">Not in a moon</div>
         <div className="c-sheet-sub">Notes saved directly on {focus?.name}.</div>
         <div className="c-sheet-scroll">
           <ItemGrid items={here} hue={focus?.hue ?? 232} onOpen={id => { closeDialog(); setOpenItemId(id); }} />
@@ -384,10 +420,10 @@ export default function Constellation() {
       </Sheet>
       <NameDialog
         open={dialog.kind === "create"}
-        title={dialog.kind === "create" && dialog.parentId ? `New sub-topic in ${focus?.name}` : "New theme"}
+        title={dialog.kind === "create" && dialog.parentId ? `New moon in ${focus?.name}` : "New planet"}
         sub={dialog.kind === "create" && dialog.parentId
-          ? (isTheme ? "Adding a sub-topic by hand switches this theme to manual, so the AI won't reshuffle it." : "A narrower topic inside this one.")
-          : "A durable, top-level area, such as Nuclear & SMRs, GLP-1 or Defense."}
+          ? (isTheme ? "Adding a moon by hand switches this planet to manual, so the AI won't reshuffle it." : "A narrower topic inside this one.")
+          : "A broad area you invest in, such as AI, Space, Energy or Healthcare & Biotech."}
         initial="" cta="Create"
         onClose={closeDialog}
         onSave={name => dialog.kind === "create" && c.createBubble(name, dialog.parentId)} />
@@ -398,6 +434,9 @@ export default function Constellation() {
         sub={`This removes it and the ${dialogBubble ? deepCount(dialogBubble.id, bubbles, items) : 0} notes inside it. This can't be undone.`}
         cta="Delete" onClose={closeDialog}
         onConfirm={() => { if (dialogBubble) { go(dialogBubble.parentId); c.deleteBubble(dialogBubble.id); } }} />
+      <ConfirmDialog open={dialog.kind === "reorganize"} title="Reorganize your space?" tone="primary"
+        sub={`The AI regroups your ${total} notes into a few broad planets, each with its own moons, such as AI › Infrastructure & Power. Planets you organize by hand stay as they are. You can undo it right after.`}
+        cta="Reorganize" onClose={closeDialog} onConfirm={runReorganize} />
       <ConfirmDialog open={dialog.kind === "deleteItem"} title="Delete this note?" sub={dialogItem?.title ?? ""}
         cta="Delete" onClose={closeDialog}
         onConfirm={() => { if (dialogItem) { setOpenItemId(null); c.deleteItem(dialogItem.id); } }} />
