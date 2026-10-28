@@ -72,7 +72,7 @@ export default function AddSheet({ open, onClose, onSubmit, onFiles }: {
         onChange={e => { const files = [...(e.target.files ?? [])]; e.target.value = ""; if (files.length) { onClose(); onFiles(files); } }} />
       <AnimatePresence>
         {error && (
-          <motion.div className="c-error" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+          <motion.div className="c-error" role="alert" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             {error}
           </motion.div>
         )}

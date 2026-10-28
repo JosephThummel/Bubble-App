@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, type Variants } from "motion/react";
+import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react";
 import { ArrowLeft, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -51,7 +51,9 @@ type Dialog =
 export default function Constellation() {
   const router = useRouter();
   const c = useConstellation();
-  const [focusId, setFocusId] = useState<string | null>(null);
+  // the focused bubble lives in the URL (?b=…) so it can be linked to and Back zooms out
+  const [focusId, setFocusId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("b"));
   const [nav, setNav] = useState<Nav>({ dir: 1, ox: 0.5, oy: 0.5 });
   const [warp, setWarp] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -96,7 +98,7 @@ export default function Constellation() {
   }, [bubbles, fid]);
   const unlinked = scopeItems.filter(i => !i.linkedAt).length;
 
-  const go = useCallback((id: string | null, origin?: { x: number; y: number }) => {
+  const zoomTo = useCallback((id: string | null, origin?: { x: number; y: number }) => {
     const depth = (x: string | null) => trailOf(x, bubbles).length;
     const dir = depth(id) >= depth(fid) && id !== null ? 1 : -1;
     const rect = stageRef.current?.getBoundingClientRect();
@@ -106,6 +108,21 @@ export default function Constellation() {
     setWarp(w => w + dir);
     setFocusId(id);
   }, [bubbles, fid]);
+  const go = useCallback((id: string | null, origin?: { x: number; y: number }) => {
+    if (id === fid) return;
+    zoomTo(id, origin);
+    window.history.pushState(null, "", id ? `?b=${encodeURIComponent(id)}` : window.location.pathname);
+  }, [fid, zoomTo]);
+
+  useEffect(() => {
+    const onPop = () => zoomTo(new URLSearchParams(window.location.search).get("b"));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [zoomTo]);
+
+  useEffect(() => {
+    document.title = focus ? `${focus.name} – Constellation` : "Constellation";
+  }, [focus]);
 
   // Keyboard: ⌘K or / to search, Esc to go up a level.
   useEffect(() => {
@@ -175,6 +192,7 @@ export default function Constellation() {
   const jumpToItem = (it: Item) => { go(it.bubbleId); setTimeout(() => setOpenItemId(it.id), 350); };
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="c-root" style={{ "--h": hue ?? 232, "--tint": hue === null ? 0 : 1 } as CSSProperties}>
       <Starfield warp={warp} hue={hue} />
       <div className="c-nebula" aria-hidden />
@@ -231,22 +249,17 @@ export default function Constellation() {
                   </span>
                 ))}
               </>
-            ) : <span className="c-eyebrow">Your space</span>}
+            ) : null}
           </div>
           <h1 className="c-title">{focus ? focus.name : "Everything you're tracking"}</h1>
           <div className="c-hero-row">
             <span className="c-meta">
               {focus
-                ? `${deepCount(focus.id, bubbles, items)} notes${children.length ? ` · ${children.length} sub-topics` : ""}`
+                ? `${deepCount(focus.id, bubbles, items)} notes${children.length ? ` in ${children.length} sub-topics` : ""}`
                 : `${total} ${total === 1 ? "note" : "notes"} across ${themes} ${themes === 1 ? "theme" : "themes"}`}
             </span>
             <div className="c-actions">
               <ViewSwitch mode={mode} onChange={setMode} />
-              {focus && (
-                <button className="c-pill c-pill-ask" onClick={() => { setAskScope(focus.id); setAskOpen(true); }}>
-                  <Sparkles size={13} /> Ask {focus.name}
-                </button>
-              )}
               {isTheme && focus && (
                 <button className={"c-pill" + (focus.pinned ? "" : " c-pill-on")} onClick={() => c.togglePin(focus.id)}
                   title={focus.pinned ? "You organize this theme by hand" : "AI keeps this theme organized"}>
@@ -304,6 +317,7 @@ export default function Constellation() {
         <div className="c-banner glass">Connections are off until the database update runs. See step 6 of the setup guide.</div>
       )}
 
+      <div role="status" aria-live="polite">
       <AnimatePresence>
         {c.saveError && (
           <motion.div className="c-toast glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}>
@@ -317,6 +331,7 @@ export default function Constellation() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
       <AnimatePresence>
         {dragging && (
@@ -382,6 +397,7 @@ export default function Constellation() {
         bubbles={bubbles} onClose={closeDialog}
         onPick={id => dialogItem && c.moveItem(dialogItem.id, id)} />
     </div>
+    </MotionConfig>
   );
 }
 

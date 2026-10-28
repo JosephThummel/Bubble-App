@@ -5,6 +5,7 @@ import { ArrowUp, Sparkles, Square, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { SourceGlyph } from "./bits";
 import { descendantsOf, pathLabel, trailOf, uid, type Bubble, type Insight, type Item } from "@/lib/graph";
+import { useReturnFocus } from "@/hooks/useReturnFocus";
 
 type Turn = { id: string; q: string; a: string; refs: string[]; state: "thinking" | "streaming" | "done" };
 
@@ -37,6 +38,7 @@ export default function AskSheet({ open, onClose, scopeId, onScope, focusId, bub
   }, [focusId, bubbles]);
   const busy = turns.some(t => t.state !== "done");
 
+  useReturnFocus(open);
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => {
     const el = scrollRef.current;
@@ -119,7 +121,7 @@ export default function AskSheet({ open, onClose, scopeId, onScope, focusId, bub
               <div className="c-ask-title"><Sparkles size={16} /> Ask</div>
               <button className="c-icon-btn" onClick={onClose} aria-label="Close"><X size={18} /></button>
             </div>
-            <div className="c-ask-scopes" role="radiogroup" aria-label="What to ask about">
+            <div className="c-ask-scopes" role="group" aria-label="What to ask about">
               <ScopeChip on={!scope} hue={232} onClick={() => onScope(null)}>Everything</ScopeChip>
               {chips.map(b => <ScopeChip key={b.id} on={scope?.id === b.id} hue={b.hue} onClick={() => onScope(b.id)}>{b.name}</ScopeChip>)}
             </div>
@@ -145,7 +147,7 @@ export default function AskSheet({ open, onClose, scopeId, onScope, focusId, bub
                   <motion.div className="c-ask-q" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>{t.q}</motion.div>
                   <div className="c-ask-a">
                     {t.state === "thinking"
-                      ? <div className="c-ask-thinking"><span className="c-thinking"><i /><i /><i /></span>Reading {t.refs.length} {t.refs.length === 1 ? "note" : "notes"}</div>
+                      ? <div className="c-ask-thinking"><span className="c-thinking"><i /><i /><i /></span>Reading {t.refs.length} {t.refs.length === 1 ? "note" : "notes"}…</div>
                       : <Answer text={t.a} refs={t.refs} items={items} bubbles={bubbles} streaming={t.state === "streaming"} onOpenItem={onOpenItem} />}
                   </div>
                 </div>
@@ -169,7 +171,7 @@ export default function AskSheet({ open, onClose, scopeId, onScope, focusId, bub
 
 function ScopeChip({ on, hue, onClick, children }: { on: boolean; hue: number; onClick: () => void; children: ReactNode }) {
   return (
-    <button role="radio" aria-checked={on} className={"c-ask-chip" + (on ? " is-on" : "")} style={{ "--h": hue } as CSSProperties} onClick={onClick}>
+    <button aria-pressed={on} className={"c-ask-chip" + (on ? " is-on" : "")} style={{ "--h": hue } as CSSProperties} onClick={onClick}>
       <i />{children}
     </button>
   );

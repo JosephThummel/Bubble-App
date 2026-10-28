@@ -26,9 +26,7 @@ export default function ItemPanel({ item, path, hue, items, links, insights, onC
         <>
           <div className="c-panel-meta">
             <SourceGlyph source={item.source} />
-            <span>{item.source === "X" ? "Post on X" : item.source}</span>
-            <span className="c-dot" />
-            <span>Saved {timeAgo(item.createdAt)}</span>
+            <span>{item.source === "X" ? "Post on X" : item.source === "File" ? "File" : item.source}, saved {timeAgo(item.createdAt)}</span>
           </div>
           <h2 className="c-panel-title">{item.title}</h2>
           {item.summary && <p className="c-panel-summary">{item.summary}</p>}
@@ -74,8 +72,8 @@ export default function ItemPanel({ item, path, hue, items, links, insights, onC
             </div>
           )}
           <div className="c-panel-actions">
-            <button className="c-btn c-btn-ghost" onClick={onMove}><FolderInput size={15} /> Move</button>
-            <button className="c-btn c-btn-danger" onClick={onDelete}><Trash2 size={15} /> Delete</button>
+            <button className="c-btn c-btn-ghost" onClick={onMove}><FolderInput size={15} /> Move…</button>
+            <button className="c-btn c-btn-danger" onClick={onDelete}><Trash2 size={15} /> Delete…</button>
           </div>
         </>
       )}
