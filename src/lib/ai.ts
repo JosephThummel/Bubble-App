@@ -2,13 +2,14 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 
 // Model choices are env-configurable so they can be tuned without a deploy.
-export const PRIMARY_MODEL = process.env.CONSTELLATION_PRIMARY_MODEL || "claude-opus-5-5"; // link reading + classification
+export const PRIMARY_MODEL = process.env.CONSTELLATION_PRIMARY_MODEL || "claude-opus-5-5"; // Ask and Find ideas
+export const WORK_MODEL = process.env.CONSTELLATION_WORK_MODEL || "claude-sonnet-5-5"; // reading saves, connecting, read-throughs, reorganizing
 export const CHEAP_MODEL = process.env.CONSTELLATION_CHEAP_MODEL || "claude-haiku-5-5"; // background re-clustering
 
 const client = new Anthropic();
 
 export type BubbleLite = { id: string; name: string; parentId: string | null; ticker?: string };
-// A stock the investor covers as its own planet, with the gist of their pitch on it.
+// A stock the investor has saved a pitch on, with the gist of their pitch on it.
 export type StockLite = { ticker: string; name: string; stance: string; thesis: string };
 export type Read = { ticker: string; why: string; impact: "positive" | "negative" | "mixed" };
 export type ModelYear = { label: string; revenue?: number; ebitda?: number; eps?: number; fcf?: number };
@@ -38,7 +39,7 @@ async function run(
   opts: { tools?: Anthropic.Beta.BetaToolUnion[]; effort: "low" | "medium" | "high" },
 ): Promise<Anthropic.Beta.BetaContentBlock[]> {
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: prompt }];
-  const withFallback = model !== CHEAP_MODEL;
+  const withFallback = !/haiku/.test(model); // Haiku has no server-side fallback
   for (let turn = 0; turn < 4; turn++) {
     const res = await client.beta.messages.create({
       model,
@@ -100,7 +101,7 @@ Use web_fetch to read the page it points to (it may be a tweet on X, a news arti
 
   const prompt = filingPrompt(bubbles, stocks, body, `{"topic":"","subtopic":"","title":"3-8 word title","summary":"one sentence under 140 chars","facts":["..."],${DETAILS_SHAPE}}`);
 
-  const content = await run(PRIMARY_MODEL, prompt, { tools, effort: url ? "medium" : "low" });
+  const content = await run(WORK_MODEL, prompt, { tools, effort: url ? "medium" : "low" });
   const out = extractJSON<Classification>(content);
   return { ...out, facts: cleanFacts(out.facts), ...cleanDetails(out), ...cleanStock(out, stocks) };
 }
@@ -112,7 +113,7 @@ export const TAXONOMY_RULES = `The space is organized as PLANETS and MOONS.
 - A PLANET is a broad investable domain an investor would name in one to three words: AI, Space, Energy, Healthcare & Biotech, Semiconductors, Crypto, Defense, Consumer, Financials, Industrials, Real Estate, Macro. Keep the number of planets small (ideally 4 to 10 in total). Something that is really a part of a bigger domain is a MOON, not a planet: power and grid buildout for datacenters is a moon of AI ("Infrastructure & Power"), AI drug discovery is a moon of AI ("Bio & Drug Discovery") or of Healthcare & Biotech, space defense is a moon of Space.
 - A MOON is a specific sub-theme inside a planet, such as AI › Infrastructure & Power, AI › Models & Labs, AI › Bio & Drug Discovery, Space › Launch, Space › Defense. A planet usually has 2 to 6 moons.
 - A planet named Portfolio, if present, holds companies the investor owns; use it only when the note is clearly about their own holdings.
-- Separately, each company the investor covers has its OWN stock planet holding the pitch, the financial model, filings and commentary on that one company. Those are listed apart and are not themes.`;
+- Separately, a planet called Stock Pitches holds a moon for each company the investor has saved a pitch on, with the pitch, their model, filings and commentary on that one company. Those are listed apart and are not themes.`;
 
 const fmtStocks = (stocks: StockLite[]) =>
   stocks.map(s => `- $${s.ticker} ${s.name}${s.stance ? ` (${s.stance})` : ""}${s.thesis ? `: ${s.thesis}` : ""}`).join("\n") || "(none yet)";
@@ -125,24 +126,24 @@ ${TAXONOMY_RULES}
 Theme planets › moons:
 ${taxonomyString(bubbles)}
 
-Covered stocks (each has its own planet), with the gist of the investor's view:
+Saved stock pitches (each a moon of Stock Pitches), with the gist of the investor's view:
 ${fmtStocks(stocks)}
 
 ${body}
 
 Choose where it goes.
-- "stock": if the note is mainly about ONE company (a pitch on it, a model of it, its filing, earnings call or press release, or a post or article mostly about that company), give its exchange ticker, e.g. "STM" or "005930.KS"; it will be filed in that company's stock planet, starting one if needed. Give "" when the note is about a market, theme, sector or several companies.
+- "stock": if the note is mainly about ONE company (a pitch on it, a model of it, its filing, earnings call or press release, or a post or article mostly about that company), give its exchange ticker, e.g. "STM" or "005930.KS". If the investor has a saved pitch on it, the note joins that pitch. Give "" when the note is about a market, theme, sector or several companies.
 - "company": that company's short name, e.g. "STMicroelectronics", or "".
 - "stance": for a pitch, "long" or "short"; otherwise "".
 - "topic" is the theme PLANET for everything else: reuse an existing planet name exactly whenever the note fits it, and only start a new planet for a genuinely separate domain. "subtopic" is the MOON: reuse an existing moon of that planet when it fits, otherwise name a new, durable sub-theme (not a one-off headline). Fill topic and subtopic even when "stock" is set, as a fallback.
 
 Pull out up to ${factCount} key facts an analyst would want to combine with other research later: concrete claims, numbers with their units and dates, named companies or tickers, forecasts, guidance, valuation figures. Each fact is one short self-contained line, e.g. "Microsoft plans 5 GW of new datacenter capacity by 2027". Skip opinions with no substance.
 
-READ-THROUGHS. This matters most. For each covered stock above (other than "stock" itself), decide whether this note materially matters for it: a demand driver, a supply constraint, a competitor's move, a customer's capex, a technology shift, pricing, regulation. Example: a market report on datacenters moving to 800V DC power matters for a long in STMicroelectronics, because the higher voltage pulls power conversion toward silicon carbide and gallium nitride, where ST is a leading supplier. For each one that matters, give "t" (the ticker), "why" (1-2 sentences that name the specific mechanism and any numbers from this note that size it for that company, written for the PM holding the position), and "impact" ("positive", "negative" or "mixed" for the investor's stance). Skip loose or generic links; [] if none.
+READ-THROUGHS. This matters most. For each saved pitch above (other than "stock" itself), decide whether this note materially matters for it: a demand driver, a supply constraint, a competitor's move, a customer's capex, a technology shift, pricing, regulation. Example: a market report on datacenters moving to 800V DC power matters for a long in STMicroelectronics, because the higher voltage pulls power conversion toward silicon carbide and gallium nitride, where ST is a leading supplier. For each one that matters, give "t" (the ticker), "why" (1-2 sentences that name the specific mechanism and any numbers from this note that size it for that company, written for the PM holding the position), and "impact" ("positive", "negative" or "mixed" for the investor's stance). Skip loose or generic links; [] if none.
 
 Also give:
 - "published": the date the article, post or document came out, as YYYY-MM-DD, or "" if you can't tell.
-- "kind": one of "pitch" (a long or short idea on a specific company), "model" (a financial model or forecast spreadsheet), "filing" (an SEC or exchange filing, earnings release or call transcript), "thesis" (an argument about a theme or sector), "research" (analysis, data or a report), "news", "opinion" (a take without much substance).
+- "kind": one of "pitch" (written deliberately as a long or short case for a specific company; an article or post that merely discusses a company is "research", "news" or "opinion"), "model" (a financial model or forecast spreadsheet), "filing" (an SEC or exchange filing, earnings release or call transcript), "thesis" (an argument about a theme or sector), "research" (analysis, data or a report), "news", "opinion" (a take without much substance).
 - "tickers": the main companies it's about, as exchange tickers, at most 5, [] if none.
 
 Respond with ONLY this JSON as your final output, no markdown:
@@ -220,7 +221,7 @@ Otherwise set "model" to null.`;
   if (a?.type === "image") blocks.push({ type: "image", source: { type: "base64", media_type: a.mediaType as "image/jpeg", data: a.data } });
   blocks.push({ type: "text", text: filingPrompt(bubbles, stocks, body, shape, 12) });
 
-  const content = await run(PRIMARY_MODEL, blocks, { effort: "medium" });
+  const content = await run(WORK_MODEL, blocks, { effort: "medium" });
   const out = extractJSON<Classification & { transcript?: string; model?: unknown }>(content);
   return {
     ...out, facts: cleanFacts(out.facts, 12), ...cleanDetails(out), ...cleanStock(out, stocks),
@@ -258,13 +259,13 @@ ${TAXONOMY_RULES}
 Here is every note in the space (title :: summary :: where it sits now):
 ${notes.map((n, i) => `${i + 1}. ${n}`).join("\n")}
 ${keep.length ? `\nThese planets are organized by hand and stay as they are, so don't create them again: ${keep.join(", ")}.\n` : ""}
-Pitches, financial models and filings on a single company go to that company's own stock planet automatically, so don't design planets for individual companies or a catch-all such as "Stock Ideas"; plan theme planets for the market, sector and thematic research.
+Stock pitches live in their own hand-kept planet, so don't design planets for individual companies or a catch-all such as "Stock Ideas"; plan theme planets for the market, sector and thematic research.
 
 Design the planets and their moons for these notes. Use as few planets as gives a clean, intuitive map (usually 4 to 10), each with 2 to 6 moons that together cover its notes. Name them the way an investor would label folders. Every note should have an obvious home.
 
 Respond with ONLY this JSON, no markdown:
 {"planets":[{"name":"AI","moons":["Infrastructure & Power","Models & Labs","Bio & Drug Discovery"]}]}`;
-  const content = await run(PRIMARY_MODEL, prompt, { effort: "medium" });
+  const content = await run(WORK_MODEL, prompt, { effort: "medium" });
   const out = extractJSON<{ planets: PlanetPlan[] }>(content);
   return (out.planets || [])
     .filter(p => p && typeof p.name === "string" && p.name.trim())
@@ -272,7 +273,7 @@ Respond with ONLY this JSON, no markdown:
     .map(p => ({ name: p.name.trim().slice(0, 40), moons: (Array.isArray(p.moons) ? p.moons : []).filter((m): m is string => typeof m === "string" && !!m.trim()).slice(0, 8).map(m => m.trim().slice(0, 40)) }));
 }
 
-export type Assignment = { n: number; planet: string; moon: string; kind: string; tickers: string[]; company: string; stance: string };
+export type Assignment = { n: number; planet: string; moon: string; kind: string; tickers: string[] };
 
 /* place a batch of notes into the planned planets › moons, and tag each with its kind and tickers */
 export async function assignNotes(plan: PlanetPlan[], notes: { n: number; text: string }[]): Promise<Assignment[]> {
@@ -283,25 +284,26 @@ ${plan.map(p => `- ${p.name}: ${p.moons.join(", ")}`).join("\n")}
 Notes (n. title :: summary):
 ${notes.map(x => `${x.n}. ${x.text}`).join("\n")}
 
-For each note also give "k", its kind: "pitch" (a long or short idea on a specific company), "model" (a financial model), "filing" (an SEC filing, earnings release or call transcript), "thesis" (an argument about a theme), "research" (analysis, data or a report), "news", or "opinion"; "t", the main companies it's about as exchange tickers (at most 5, [] if none), with the company it is mainly about first; for a pitch, model or filing on one company, "c", that company's short name; and for a pitch, "s", "long" or "short".
+For each note also give "k", its kind: "pitch" (written deliberately as a long or short case for a specific company, not an article that merely discusses one), "model" (a financial model), "filing" (an SEC filing, earnings release or call transcript), "thesis" (an argument about a theme), "research" (analysis, data or a report), "news", or "opinion"; "t", the main companies it's about as exchange tickers (at most 5, [] if none), with the company it is mainly about first.
 
 Respond with ONLY this JSON, one entry per note, no markdown:
-{"a":[{"n":1,"p":"AI","m":"Models & Labs","k":"research","t":["NVDA"]},{"n":2,"p":"Semiconductors","m":"Power","k":"pitch","t":["STM"],"c":"STMicroelectronics","s":"long"}]}`;
-  const content = await run(PRIMARY_MODEL, prompt, { effort: "low" });
-  const out = extractJSON<{ a: { n: number; p: string; m: string; k?: string; t?: string[]; c?: string; s?: string }[] }>(content);
+{"a":[{"n":1,"p":"AI","m":"Models & Labs","k":"research","t":["NVDA"]},{"n":2,"p":"Semiconductors","m":"Power","k":"pitch","t":["STM"]}]}`;
+  const content = await run(WORK_MODEL, prompt, { effort: "low" });
+  const out = extractJSON<{ a: { n: number; p: string; m: string; k?: string; t?: string[] }[] }>(content);
   const planets = new Map(plan.map(p => [p.name.toLowerCase(), p]));
   return (out.a || []).flatMap(x => {
     const p = planets.get(String(x?.p ?? "").toLowerCase());
     if (!p || typeof x.n !== "number") return [];
     const moon = p.moons.find(m => m.toLowerCase() === String(x.m ?? "").toLowerCase()) ?? "";
     const d = cleanDetails({ kind: x.k, tickers: x.t });
-    return [{ n: x.n, planet: p.name, moon, kind: d.kind, tickers: d.tickers, company: typeof x.c === "string" ? x.c.slice(0, 60) : "", stance: x.s === "long" || x.s === "short" ? x.s : "" }];
+    return [{ n: x.n, planet: p.name, moon, kind: d.kind, tickers: d.tickers }];
   });
 }
 
 export type NoteForLinking = { id: string; theme: string; title: string; summary: string; facts: string[]; kind?: string; tickers?: string[]; published?: string };
+export type Bond = { a: string; b: string; strength: number; label: string };
 export type Connections = {
-  bonds: { otherId: string; strength: number; label: string }[];
+  bonds: Bond[];
   insights: { itemIds: string[]; title: string; body: string; kind: string; nextStep: string }[];
 };
 
@@ -321,7 +323,7 @@ const fmtNote = (n: NoteForLinking) =>
   `[${n.id}] (${n.theme})${n.kind ? ` {${n.kind}}` : ""}${n.tickers?.length ? ` $${n.tickers.join(" $")}` : ""}${n.published ? ` ${n.published}` : ""} ${n.title} :: ${n.summary}${n.facts.length ? "\n    facts: " + n.facts.join(" | ") : ""}`;
 
 // What a good connection is, for a hedge fund analyst. Shared by single-note linking and the idea sweep.
-const ANALYST_BRIEF = `You are the senior analyst inside a hedge fund investor's research app. They save stock pitches, their own financial models, SEC filings, Substack posts and posts on X, research and news. Each stock they cover has its own planet (shown as the note's planet, e.g. "$STM STMicroelectronics"). The point of the app is to find connections other investors miss, the way a sharp PM reads a market report and sees what it means for a position.
+const ANALYST_BRIEF = `You are the senior analyst inside a hedge fund investor's research app. They save stock pitches, their own financial models, SEC filings, Substack posts and posts on X, research and news. Each stock they have saved a pitch on has its own moon in Stock Pitches (shown as the note's place, e.g. "$STM STMicroelectronics"). The point of the app is to find connections other investors miss, the way a sharp PM reads a market report and sees what it means for a position.
 
 Connections worth drawing, best first:
 1. COMBINE: numbers from different notes that multiply or net into an estimate nobody stated. Example: one note gives total leading-edge chip supply over five years, another gives total power capacity for datacenters; together they bound total AI token supply, and the tighter constraint tells you which bottleneck to own.
@@ -331,39 +333,56 @@ Connections worth drawing, best first:
 5. SAME EXPOSURE: two notes about the same company, supplier, customer or competitor, or a second-order beneficiary.
 Being in the same theme is NOT a connection. Prefer links across different planets. Never connect notes just because they share a buzzword.`;
 
-/* find how one note relates to everything else saved, and what follows from combining them */
-export async function connect(note: NoteForLinking, others: NoteForLinking[]): Promise<Connections> {
-  const prompt =
-`${ANALYST_BRIEF}
+/* find how a batch of notes relates to everything else in scope, and what follows from combining them.
+   The library goes first and is cached, so a sweep reading it batch after batch pays for it once. */
+export async function connect(newIds: string[], library: NoteForLinking[]): Promise<Connections> {
+  const known = new Set(library.map(n => n.id));
+  const fresh = newIds.filter(id => known.has(id));
+  if (!fresh.length || library.length < 2) return { bonds: [], insights: [] };
+  const many = fresh.length > 1;
+  const blocks: Anthropic.Beta.BetaContentBlockParam[] = [
+    {
+      type: "text",
+      text: `${ANALYST_BRIEF}
 
-NEW NOTE:
-${fmtNote(note)}
+THE NOTES IN SCOPE (id, planet › moon, {kind}, $tickers, published date, title :: summary, facts):
+${library.map(fmtNote).join("\n")}`,
+      cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
+      text: `NEW ${many ? "NOTES" : "NOTE"} TO CONNECT: ${fresh.map(id => `[${id}]`).join(" ")}
 
-EVERYTHING ELSE THEY HAVE SAVED (id, planet › moon, {kind}, $tickers, published date, title :: summary, facts):
-${others.map(fmtNote).join("\n") || "(nothing yet)"}
+1. BONDS. For ${many ? "each new note" : "the new note"}, which other notes in scope have a real connection to it, of the kinds above? Give "a" (the new note's id), "b" (the other note's id), strength 1 (worth a look), 2 (clearly useful together) or 3 (you'd want both open before trading), and a label of 2-6 words that names the connection concretely, like "chips × power → token cap", "pitch depends on capex forecast" or "contradicts on HBM supply". At most 6 per new note, strongest first. None if nothing truly connects.
 
-1. BONDS. Which saved notes have a real connection to the new note, of the kinds above? For each give strength 1 (worth a look), 2 (clearly useful together) or 3 (you'd want both open before trading), and a label of 2-6 words that names the connection concretely, like "chips × power → token cap", "pitch depends on capex forecast" or "contradicts on HBM supply". At most 8, strongest first. None if nothing truly connects.
-
-2. DEDUCTIONS. Only where combining the new note with others gives an investor something actionable they would not get from any single note. Each has:
+2. DEDUCTIONS. Only where combining ${many ? "a new note" : "the new note"} with others gives an investor something actionable they would not get from any single note. Each has:
 - "kind": "model" (napkin math across notes), "pitch" (what it means for a specific stock idea), "risk" (a dependency or threat to a position), or "contradiction".
 - "title": the conclusion in at most 12 words.
 - "body": 2-4 sentences. Show the numbers and name the assumptions. Say which tickers it matters for.
 - "nextStep": one concrete follow-up the analyst could run for them, phrased as a request, e.g. "Estimate 2030 AI token supply from the CoWoS wafer and datacenter GW numbers in these notes, and say which constraint binds". Empty if none.
-At most 2. None rather than restating a note.
+At most ${many ? 3 : 2}. None rather than restating a note.
 
 Use only the ids shown in brackets. Respond with ONLY this JSON, no markdown:
-{"bonds":[{"otherId":"","strength":2,"label":""}],"insights":[{"itemIds":["new note id","other id"],"kind":"model","title":"","body":"","nextStep":""}]}`;
+{"bonds":[{"a":"","b":"","strength":2,"label":""}],"insights":[{"itemIds":["",""],"kind":"model","title":"","body":"","nextStep":""}]}`,
+    },
+  ];
 
-  const content = await run(PRIMARY_MODEL, prompt, { effort: "medium" });
-  const out = extractJSON<Connections>(content);
-  const known = new Set([note.id, ...others.map(o => o.id)]);
-  return {
-    bonds: (out.bonds || [])
-      .filter(b => b && known.has(b.otherId) && b.otherId !== note.id)
-      .slice(0, 8)
-      .map(b => ({ otherId: b.otherId, strength: Math.min(3, Math.max(1, Math.round(Number(b.strength) || 1))), label: String(b.label || "").slice(0, 60) })),
-    insights: cleanInsights(out.insights, known, 2),
-  };
+  const content = await run(WORK_MODEL, blocks, { effort: many ? "medium" : "low" });
+  const out = extractJSON<{ bonds?: unknown; insights?: unknown }>(content);
+  const isNew = new Set(fresh);
+  const seen = new Set<string>();
+  const bonds = (Array.isArray(out.bonds) ? out.bonds : [])
+    .map(x => x as { a?: unknown; b?: unknown; strength?: unknown; label?: unknown })
+    .map(x => ({ a: String(x.a ?? ""), b: String(x.b ?? ""), strength: Math.min(3, Math.max(1, Math.round(Number(x.strength) || 1))), label: String(x.label ?? "").slice(0, 60) }))
+    .filter(x => {
+      const ok = (isNew.has(x.a) || isNew.has(x.b)) && known.has(x.a) && known.has(x.b) && x.a !== x.b;
+      const key = x.a < x.b ? `${x.a}_${x.b}` : `${x.b}_${x.a}`;
+      if (!ok || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 6 * fresh.length);
+  return { bonds, insights: cleanInsights(out.insights, known, many ? 3 : 2) };
 }
 
 const INSIGHT_KINDS = /^(model|pitch|risk|contradiction)$/;
@@ -415,7 +434,7 @@ Which of these notes materially matter for this position? Think like the PM who 
 
 Use only the ids shown in brackets. Respond with ONLY this JSON, no markdown:
 {"reads":[{"id":"","why":"","impact":"positive"}]}`;
-  const content = await run(PRIMARY_MODEL, prompt, { effort: "medium" });
+  const content = await run(WORK_MODEL, prompt, { effort: "medium" });
   const out = extractJSON<{ reads: unknown }>(content);
   const known = new Set(notes.map(x => x.id));
   return (Array.isArray(out.reads) ? out.reads : [])

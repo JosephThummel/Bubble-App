@@ -435,7 +435,7 @@ kbd { font-family: var(--font); font-size: 11px; color: var(--ink-3); border: 1p
 .w-edge-hot { filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.35)); }
 @keyframes w-flow { to { stroke-dashoffset: -14; } }
 .w-edge-label {
-  font-size: 12px; font-weight: 550; fill: var(--ink-2); paint-order: stroke; stroke: var(--bg); stroke-width: 4px;
+  font-weight: 550; fill: var(--ink-2); paint-order: stroke; stroke: var(--bg);
   opacity: 0; transition: opacity 0.3s var(--spring); pointer-events: none;
 }
 .w-node { cursor: pointer; transition: opacity 0.35s var(--spring); outline: none; }
@@ -447,10 +447,23 @@ kbd { font-family: var(--font); font-size: 11px; color: var(--ink-3); border: 1p
 .w-gem-glow { fill: hsl(46 100% 60% / 0.16); animation: w-pulse 3s ease-in-out infinite; }
 .w-gem-core { fill: hsl(46 100% 70%); stroke: hsl(48 100% 90%); stroke-width: 1.2; filter: drop-shadow(0 0 6px hsl(44 100% 60%)); }
 .w-label {
-  font-size: 13px; font-weight: 500; fill: var(--ink-2); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round;
+  font-weight: 500; fill: var(--ink-2); paint-order: stroke; stroke: var(--bg); stroke-linejoin: round;
   pointer-events: none; transition: fill 0.3s, opacity 0.3s;
 }
-.w-node-insight .w-label { fill: hsl(46 100% 78%); }
+.w-node-insight .w-label { fill: hsl(46 100% 78%); font-weight: 600; }
+.w-svg { --k: 1; }
+.c-save-pitch { width: 100%; justify-content: center; margin-top: 16px; }
+.w-label, .w-edge-label { font-size: calc(13px / var(--k)); stroke-width: calc(4px / var(--k)); }
+.w-label-hidden { opacity: 0; }
+.w-node:hover .w-label-hidden, .w-node:focus-visible .w-label-hidden, .w-dim .w-node.w-lit .w-label-hidden { opacity: 1; }
+.w-region circle { stroke-width: calc(1px / var(--k)); stroke-dasharray: calc(3px / var(--k)) calc(5px / var(--k)); transition: opacity 0.3s; }
+.w-region-label {
+  font-size: calc(12px / var(--k)); font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
+  paint-order: stroke; stroke: var(--bg); stroke-width: calc(4px / var(--k)); pointer-events: none;
+}
+.w-dim .w-region { opacity: 0.35; }
+.w-loose { position: absolute; top: 12px; left: 16px; z-index: 5; }
+.w-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--ink-3); font-size: 15px; pointer-events: none; }
 .w-dim .w-node { opacity: 0.22; }
 .w-dim .w-edge { opacity: 0.08; }
 .w-dim .w-node.w-lit, .w-dim .w-edge.w-lit { opacity: 1; }
