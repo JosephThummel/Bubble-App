@@ -70,31 +70,31 @@ export function MoveDialog({ open, title, currentId, bubbles, onClose, onPick }:
   );
 }
 
-// Cover a stock: its own planet, keyed by ticker, with a long or short stance.
+// Save a pitch: a moon of Stock Pitches, keyed by ticker, with a long or short stance.
 export function CoverDialog({ open, initial, onClose, onSave }: {
-  open: boolean; initial?: { ticker: string; name: string }; onClose: () => void;
+  open: boolean; initial?: { ticker: string; name: string; stance?: "long" | "short" | "watch" }; onClose: () => void;
   onSave: (ticker: string, name: string, stance?: "long" | "short" | "watch") => void;
 }) {
   return (
-    <Sheet open={open} onClose={onClose} width={460} label="Cover a stock">
+    <Sheet open={open} onClose={onClose} width={460} label="Save a pitch">
       {open && <CoverForm initial={initial} onClose={onClose} onSave={onSave} />}
     </Sheet>
   );
 }
 
 function CoverForm({ initial, onClose, onSave }: {
-  initial?: { ticker: string; name: string }; onClose: () => void;
+  initial?: { ticker: string; name: string; stance?: "long" | "short" | "watch" }; onClose: () => void;
   onSave: (ticker: string, name: string, stance?: "long" | "short" | "watch") => void;
 }) {
   const [ticker, setTicker] = useState(initial?.ticker ?? "");
   const [name, setName] = useState(initial?.name ?? "");
-  const [stance, setStance] = useState<"long" | "short" | "watch">("long");
+  const [stance, setStance] = useState<"long" | "short" | "watch">(initial?.stance ?? "long");
   const valid = /^[A-Z0-9.\-^]{1,12}$/i.test(ticker.trim());
   const save = () => { if (valid) { onSave(ticker.trim().toUpperCase(), name.trim(), stance); onClose(); } };
   return (
     <>
-      <div className="c-sheet-title">Cover a stock</div>
-      <div className="c-sheet-sub">It gets its own planet with a dashboard: price and valuation history, your model, your files, and read-throughs from the rest of your research.</div>
+      <div className="c-sheet-title">Save a pitch</div>
+      <div className="c-sheet-sub">It gets its own moon in Stock Pitches with a dashboard: price and valuation history, your model, your files, and read-throughs from the rest of your research.</div>
       <div className="c-cover-row">
         <input className="c-input c-cover-ticker" autoFocus value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())}
           onKeyDown={e => { if (e.key === "Enter") save(); }} placeholder="Ticker, e.g. STM" aria-label="Ticker" />
@@ -110,7 +110,7 @@ function CoverForm({ initial, onClose, onSave }: {
       </div>
       <div className="c-sheet-foot">
         <button className="c-btn c-btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="c-btn c-btn-primary" disabled={!valid} onClick={save}>Cover</button>
+        <button className="c-btn c-btn-primary" disabled={!valid} onClick={save}>Save pitch</button>
       </div>
     </>
   );

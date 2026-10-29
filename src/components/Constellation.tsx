@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react";
-import { ArrowLeft, CandlestickChart, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkMinus, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import ItemGrid from "@/components/space/ItemGrid";
@@ -23,7 +23,7 @@ import Sheet from "@/components/ui/Sheet";
 import ViewSwitch, { type ViewMode } from "@/components/ui/ViewSwitch";
 import { useConstellation } from "@/hooks/useConstellation";
 import { findLinks, looksLikeLinkList } from "@/lib/files";
-import { deepCount, descendantsOf, isStock, pathLabel, readsFor, stockOf, trailOf, type Graph, type Item } from "@/lib/graph";
+import { deepCount, descendantsOf, ideasOf, isStock, pathLabel, pitchesOf, readsFor, stockOf, trailOf, type Graph, type Item } from "@/lib/graph";
 import { signOut } from "@/lib/storage";
 import { supabaseEnabled } from "@/lib/supabase/config";
 
@@ -52,7 +52,8 @@ type Dialog =
   | { kind: "deleteItem"; itemId: string }
   | { kind: "loose" }
   | { kind: "reorganize" }
-  | { kind: "cover"; ticker?: string; name?: string };
+  | { kind: "unsave"; id: string }
+  | { kind: "cover"; ticker?: string; name?: string; itemId?: string; stance?: "long" | "short" };
 
 export default function Constellation() {
   const router = useRouter();
@@ -104,7 +105,7 @@ export default function Constellation() {
     const t = trailOf(it.bubbleId, bubbles);
     const depth = fid ? trailOf(fid, bubbles).length : 0;
     const g = t[depth] ?? t[t.length - 1];
-    return { key: g?.id ?? "", hue: g?.hue ?? 232 };
+    return { key: g?.id ?? "", hue: g?.hue ?? 232, name: g?.name ?? "" };
   }, [bubbles, fid]);
   const unlinked = scopeItems.filter(i => !i.linkedAt).length;
 
@@ -206,14 +207,18 @@ export default function Constellation() {
   }
 
   const total = items.length;
-  const themes = bubbles.filter(b => b.parentId === null && !b.ticker).length;
+  const pitches = pitchesOf(bubbles);
+  const themes = bubbles.filter(b => b.parentId === null && b.id !== pitches?.id).length;
   const covered = bubbles.filter(isStock).length;
+  const isPitches = !!focus && focus.id === pitches?.id;
+  const ideaCount = items.filter(i => i.bubbleId === ideasOf(bubbles)?.id).length;
   const showOrbs = children.length > 0;
   const isTheme = focus?.parentId === null;
   const hue = focus?.hue ?? null;
   const pulseId = c.activity.kind === "filed" ? c.activity.bubbleId : null;
   const panelHue = openItem ? bubbles.find(b => b.id === openItem.bubbleId)?.hue ?? 232 : 232;
   const dialogBubble = dialog.kind === "rename" || dialog.kind === "delete" ? bubbles.find(b => b.id === dialog.id) : null;
+  const unsaving = dialog.kind === "unsave" ? bubbles.filter(isStock).find(b => b.id === dialog.id) : undefined;
   const dialogItem = dialog.kind === "move" || dialog.kind === "deleteItem" ? items.find(i => i.id === dialog.itemId) : null;
   const closeDialog = () => setDialog({ kind: "none" });
 
@@ -292,9 +297,11 @@ export default function Constellation() {
             <span className="c-meta">
               {stockFocus
                 ? [`$${stockFocus.ticker}`, stockFocus.stance && STANCE[stockFocus.stance], plural(deepCount(stockFocus.id, bubbles, items), "note"), readCount ? plural(readCount, "read-through") : ""].filter(Boolean).join(" · ")
+                : isPitches
+                ? [`${covered} saved ${covered === 1 ? "pitch" : "pitches"}`, ideaCount ? plural(ideaCount, "idea") : ""].filter(Boolean).join(" · ")
                 : focus
-                ? `${deepCount(focus.id, bubbles, items)} notes${children.length ? ` in ${children.length} ${children.length === 1 ? "moon" : "moons"}` : ""}`
-                : `${plural(total, "note")} across ${plural(themes, "planet")}${covered ? ` and ${plural(covered, "stock")}` : ""}`}
+                ? `${plural(deepCount(focus.id, bubbles, items), "note")}${children.length ? ` in ${children.length} ${children.length === 1 ? "moon" : "moons"}` : ""}`
+                : `${plural(total, "note")} across ${plural(themes, "planet")}${covered ? ` and ${covered} ${covered === 1 ? "pitch" : "pitches"}` : ""}`}
             </span>
             <div className="c-actions">
               <ViewSwitch mode={mode} onChange={setMode} dashboard={!!stockFocus} />
@@ -306,15 +313,20 @@ export default function Constellation() {
                   ))}
                 </div>
               )}
-              {isTheme && focus && !stockFocus && (
+              {stockFocus && (
+                <button className="c-pill" onClick={() => setDialog({ kind: "unsave", id: stockFocus.id })} title="Move its notes back to Pitch ideas">
+                  <BookmarkMinus size={13} /> Unsave pitch
+                </button>
+              )}
+              {isTheme && focus && !stockFocus && !isPitches && (
                 <button className={"c-pill" + (focus.pinned ? "" : " c-pill-on")} onClick={() => c.togglePin(focus.id)}
                   title={focus.pinned ? "You organize this planet by hand" : "AI keeps this planet organized"}>
                   {focus.pinned ? <><Lock size={13} /> Manual</> : <><Sparkles size={13} /> Auto-organizing</>}
                 </button>
               )}
-              {!focus && (
-                <button className="c-pill" onClick={() => setDialog({ kind: "cover" })} title="Give a stock its own planet with a dashboard">
-                  <CandlestickChart size={13} /> Cover a stock
+              {(!focus || isPitches) && (
+                <button className="c-pill" onClick={() => setDialog({ kind: "cover" })} title="Give a stock pitch its own moon with a dashboard">
+                  <Bookmark size={13} /> Save a pitch
                 </button>
               )}
               {!focus && total > 1 && (
@@ -323,7 +335,7 @@ export default function Constellation() {
                   <Wand2 size={13} /> Reorganize
                 </button>
               )}
-              {!stockFocus && (
+              {!stockFocus && !isPitches && (
                 <button className="c-icon-btn" title={focus ? "New moon" : "New planet"} aria-label={focus ? "New moon" : "New planet"}
                   onClick={() => setDialog({ kind: "create", parentId: fid })}><Plus size={16} /></button>
               )}
@@ -368,9 +380,10 @@ export default function Constellation() {
         </AnimatePresence>
         <AnimatePresence>
           {mode === "web" && unlinked > 0 && c.connectionsReady && (
-            <motion.button key="connect" className="c-loose glass c-connect" onClick={c.linkAll}
-              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}>
-              <Link2 size={14} /> Find connections for {unlinked} {unlinked === 1 ? "note" : "notes"}
+            <motion.button key="connect" className="c-loose glass c-connect" onClick={() => c.linkAll(fid ? scopeItems.map(i => i.id) : null)}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
+              title={focus ? `Connects these notes to each other, within ${focus.name} only` : "Connects these notes to everything in your space"}>
+              <Link2 size={14} /> Find connections for {unlinked} {unlinked === 1 ? "note" : "notes"}{focus ? ` in ${focus.name}` : ""}
             </motion.button>
           )}
           {mode === "orbits" && showOrbs && here.length > 0 && (
@@ -434,6 +447,7 @@ export default function Constellation() {
         onOpenTicker={openTicker}
         onClose={() => { setOpenItemId(null); if (backToAsk) { setBackToAsk(false); setAskOpen(true); } }}
         onMove={() => openItem && setDialog({ kind: "move", itemId: openItem.id })}
+        onSavePitch={t => openItem && setDialog({ kind: "cover", ticker: t, itemId: openItem.id })}
         onDelete={() => openItem && setDialog({ kind: "deleteItem", itemId: openItem.id })} />
 
       <StockPanel symbol={stockSymbol} items={items} onClose={() => setStockSymbol(null)}
@@ -450,7 +464,7 @@ export default function Constellation() {
         onOpenItem={id => { setAskOpen(false); setBackToAsk(true); setOpenItemId(id); }} />
 
       <InsightsSheet open={insightsOpen} insights={insights} onClose={() => setInsightsOpen(false)} onOpen={setOpenInsightId}
-        onFind={c.findIdeas} count={items.length} />
+        onFind={() => c.findIdeas(fid ? scopeItems.map(i => i.id) : null)} count={scopeItems.length} scopeName={focus?.name} />
 
       <Sheet open={dialog.kind === "loose"} onClose={closeDialog} width={760} label="Notes not in a moon">
         <div className="c-sheet-title">Not in a moon</div>
@@ -476,14 +490,23 @@ export default function Constellation() {
         cta="Delete" onClose={closeDialog}
         onConfirm={() => { if (dialogBubble) { go(dialogBubble.parentId); c.deleteBubble(dialogBubble.id); } }} />
       <ConfirmDialog open={dialog.kind === "reorganize"} title="Reorganize your space?" tone="primary"
-        sub={`The AI regroups your ${total} notes into a few broad planets, each with its own moons, such as AI › Infrastructure & Power. Planets you organize by hand stay as they are. You can undo it right after.`}
+        sub={`The AI regroups your ${total} notes into a few broad planets, each with its own moons, such as AI › Infrastructure & Power. Planets you organize by hand, and your stock pitches, stay as they are. You can undo it right after.`}
         cta="Reorganize" onClose={closeDialog} onConfirm={runReorganize} />
       <ConfirmDialog open={dialog.kind === "deleteItem"} title="Delete this note?" sub={dialogItem?.title ?? ""}
         cta="Delete" onClose={closeDialog}
         onConfirm={() => { if (dialogItem) { setOpenItemId(null); c.deleteItem(dialogItem.id); } }} />
       <CoverDialog open={dialog.kind === "cover"} onClose={closeDialog}
         initial={dialog.kind === "cover" && dialog.ticker ? { ticker: dialog.ticker, name: dialog.name ?? "" } : undefined}
-        onSave={(t, name, stance) => { const id = c.coverStock(t, name, stance); setTimeout(() => go(id), 50); }} />
+        onSave={(t, name, stance) => {
+          const from = dialog.kind === "cover" ? dialog.itemId : undefined;
+          const id = c.coverStock(t, name, stance, from);
+          setOpenItemId(null);
+          setTimeout(() => go(id), 50);
+        }} />
+      <ConfirmDialog open={dialog.kind === "unsave"} title={`Unsave ${unsaving ? `$${unsaving.ticker}` : "this pitch"}?`} tone="primary"
+        sub={`Its ${unsaving ? deepCount(unsaving.id, bubbles, items) : 0} notes move back to Pitch ideas, and its dashboard and model numbers go. You can save it again from any of its notes.`}
+        cta="Unsave" onClose={closeDialog}
+        onConfirm={() => { if (unsaving) { go(unsaving.parentId); c.unsaveStock(unsaving.id); } }} />
       <MoveDialog open={dialog.kind === "move"} title={dialogItem?.title ?? ""} currentId={dialogItem?.bubbleId ?? ""}
         bubbles={bubbles} onClose={closeDialog}
         onPick={id => dialogItem && c.moveItem(dialogItem.id, id)} />

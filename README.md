@@ -52,9 +52,10 @@ mode on that browser is copied into their account.
   and tags its publish date, kind (pitch, thesis, research, news, opinion) and tickers.
   `src/app/api/organize` redesigns the whole space as planets › moons (plan, then assign in batches);
   `src/app/api/cluster` regroups one planet's moons.
-- `src/app/api/connect` bonds a new note to related ones the way an analyst would (numbers that combine
-  into an estimate, a pitch that depends on a thesis, research that applies, contradictions) and writes
-  ideas with a suggested next step; `src/app/api/ideas` reads the whole space at once for the best
+- `src/app/api/connect` bonds a batch of new notes to related ones the way an analyst would (numbers that
+  combine into an estimate, a pitch that depends on a thesis, research that applies, contradictions) and
+  writes ideas with a suggested next step. It reads the notes in scope (the whole space, or the planet or
+  moon in view) once per batch of up to 12 new notes, with that list prompt-cached across the batches; `src/app/api/ideas` reads the whole space at once for the best
   cross-note ideas; `src/app/api/ask` streams an answer with the whole scope in context.
   All of them run on the server so the Anthropic key never reaches the browser,
   and all require a signed-in user when Supabase is configured.
@@ -64,12 +65,13 @@ mode on that browser is copied into their account.
   link is read and filed into its own bubble, six at a time. Pasting several links at once does the same.
 - `src/lib/x.ts` reads posts on X through the X API's post lookup (100 per request) when `X_BEARER_TOKEN`
   is set, including long posts, linked article titles and quoted posts. X bills each post read.
-- Stocks you cover are planets of their own (a bubble with a ticker). A pitch, model or filing on one
-  company is filed into its stock planet, which opens into a dashboard (`src/components/stock`): price and
+- Stock pitches live in one hand-kept planet, Stock Pitches. Each pitch you save is a moon with a ticker;
+  notes mainly about that company join it. A pitch or model the AI spots on any other company waits in
+  Stock Pitches › Pitch ideas until you save it as a pitch. A saved pitch opens into a dashboard (`src/components/stock`): price and
   valuation history, the forecast from your model with what the stock trades at on it
   (`src/lib/valuation.ts`), read-throughs from the rest of your research, and your files on it.
   Filing gives each note read-throughs to covered stocks; `src/app/api/reads` scans everything saved
-  for a newly covered stock.
+  for a newly saved pitch.
 - `src/lib/filings.ts` keeps the cover, MD&A, risk factors and income statement of long 10-Ks and 10-Qs;
   `src/lib/sec.ts` reads sec.gov filing links server-side with the `SEC_USER_AGENT` EDGAR asks for.
 - `src/lib/stocks.ts` pulls five years of daily prices and financial statements for a ticker from

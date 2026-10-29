@@ -8,9 +8,9 @@ import { IDEA_KIND } from "./InsightPanel";
 import type { Insight } from "@/lib/graph";
 
 // Every idea, newest first, and a button to read the whole space for more.
-export default function InsightsSheet({ open, insights, onClose, onOpen, onFind, count }: {
+export default function InsightsSheet({ open, insights, onClose, onOpen, onFind, count, scopeName }: {
   open: boolean; insights: Insight[]; onClose: () => void; onOpen: (id: string) => void;
-  onFind: () => Promise<string>; count: number;
+  onFind: () => Promise<string>; count: number; scopeName?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -26,7 +26,7 @@ export default function InsightsSheet({ open, insights, onClose, onOpen, onFind,
       <div className="c-sheet-sub">Connections the AI found by reading your research together: napkin math across notes, pitches that depend on other research, and contradictions.</div>
       <button className="c-find-ideas" onClick={find} disabled={busy || count < 2}>
         {busy ? <span className="c-thinking"><i /><i /><i /></span> : <Sparkles size={15} />}
-        {busy ? `Reading all ${count} notes…` : `Find new ideas across all ${count} notes`}
+        {busy ? `Reading ${count} notes…` : scopeName ? `Find new ideas in ${scopeName} (${count} notes)` : `Find new ideas across all ${count} notes`}
       </button>
       {note && <div className="c-find-note" role="status">{note}</div>}
       <div className="c-sheet-scroll c-insight-list">

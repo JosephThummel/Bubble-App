@@ -45,18 +45,69 @@ export function withPostDates(g: Graph): Graph {
   return changed ? { ...g, items } : g;
 }
 
-// Stock planets: one per company the investor covers, keyed by ticker.
-export const isStock = (b?: Bubble | null): b is Bubble & { ticker: string } => !!b?.ticker && b.parentId === null;
+// Stock pitches: one planet, "Stock Pitches", holding a moon per company the investor has saved
+// a pitch on (keyed by ticker), plus a "Pitch ideas" moon for pitches the AI spotted that the
+// investor hasn't saved yet.
+export const PITCHES = "Stock Pitches";
+export const IDEAS = "Pitch ideas";
+export const isStock = (b?: Bubble | null): b is Bubble & { ticker: string } => !!b?.ticker;
 export const stockOf = (ticker: string, bubbles: Bubble[]) => bubbles.find(b => isStock(b) && b.ticker === ticker.toUpperCase());
-// Notes that become part of a stock's own planet rather than a theme.
+export const pitchesOf = (bubbles: Bubble[]) =>
+  bubbles.find(b => b.parentId === null && bubbles.some(x => x.parentId === b.id && x.ticker))
+  ?? bubbles.find(b => b.parentId === null && !b.ticker && normalize(b.name) === normalize(PITCHES));
+export const ideasOf = (bubbles: Bubble[]) => {
+  const p = pitchesOf(bubbles);
+  return p ? bubbles.find(b => b.parentId === p.id && !b.ticker && normalize(b.name) === normalize(IDEAS)) : undefined;
+};
+// Notes that belong with a company's pitch rather than a theme.
 export const STOCK_KINDS = new Set(["pitch", "model", "filing"]);
+// Notes that are themselves a case for a stock: they wait in Pitch ideas until the investor saves one.
+export const PITCH_KINDS = new Set(["pitch", "model"]);
 
+// The Stock Pitches planet, made if missing. Hand-kept, so reorganizing never reshuffles it.
+function ensurePitches(bubbles: Bubble[]): { bubbles: Bubble[]; id: string } {
+  const have = pitchesOf(bubbles);
+  if (have) return { bubbles: have.pinned ? bubbles : bubbles.map(b => (b.id === have.id ? { ...b, pinned: true } : b)), id: have.id };
+  const b: Bubble = { id: uid(), name: PITCHES, parentId: null, hue: nextHue(bubbles, null), pinned: true };
+  return { bubbles: [...bubbles, b], id: b.id };
+}
+
+export function ensureIdeas(bubbles: Bubble[]): { bubbles: Bubble[]; id: string } {
+  const p = ensurePitches(bubbles);
+  const have = ideasOf(p.bubbles);
+  if (have) return { bubbles: p.bubbles, id: have.id };
+  const b: Bubble = { id: uid(), name: IDEAS, parentId: p.id, hue: nextHue(p.bubbles, p.id) };
+  return { bubbles: [...p.bubbles, b], id: b.id };
+}
+
+// Save a pitch on a company: its own moon in Stock Pitches.
 export function addStock(bubbles: Bubble[], ticker: string, name?: string, stance?: Stance): { bubbles: Bubble[]; id: string } {
   const t = ticker.trim().toUpperCase();
   const have = stockOf(t, bubbles);
   if (have) return { bubbles: stance && !have.stance ? bubbles.map(b => (b.id === have.id ? { ...b, stance } : b)) : bubbles, id: have.id };
-  const b: Bubble = { id: uid(), name: name?.trim() || t, parentId: null, hue: nextHue(bubbles, null), ticker: t, stance };
-  return { bubbles: [...bubbles, b], id: b.id };
+  const p = ensurePitches(bubbles);
+  const b: Bubble = { id: uid(), name: name?.trim() || t, parentId: p.id, hue: nextHue(p.bubbles, p.id), ticker: t, stance };
+  return { bubbles: [...p.bubbles, b], id: b.id };
+}
+
+// Stocks saved before pitches had a planet of their own were planets; they become its moons.
+export function withPitchPlanet(g: Graph): Graph {
+  if (!g.bubbles.some(b => b.ticker && b.parentId === null)) return g;
+  const p = ensurePitches(g.bubbles);
+  return { ...g, bubbles: p.bubbles.map(b => (b.ticker && b.parentId === null ? { ...b, parentId: p.id } : b)) };
+}
+
+// Take back a saved pitch: its notes go to Pitch ideas and the moon goes.
+export function unsaveStock(g: Graph, id: string): Graph {
+  const s = g.bubbles.find(b => b.id === id);
+  if (!isStock(s)) return g;
+  const scope = new Set([id, ...descendantsOf(id, g.bubbles)]);
+  const ideas = ensureIdeas(g.bubbles);
+  return {
+    ...g,
+    bubbles: ideas.bubbles.filter(b => !scope.has(b.id)),
+    items: g.items.map(i => (scope.has(i.bubbleId) ? { ...i, bubbleId: ideas.id } : i)),
+  };
 }
 
 // Every note that reads through to a stock, outside its own planet.
@@ -149,21 +200,23 @@ export function applyClusters(g: Graph, themeId: string, clusters: { name: strin
   return { ...g, bubbles, items };
 }
 
-// stock: the ticker of a covered company whose own planet the note belongs in, if any.
-export type Placement = { planet: string; moon: string; kind?: string; tickers?: string[]; stock?: string; company?: string; stance?: Stance };
+// stock: the ticker of a saved pitch the note belongs with, if any; idea: a pitch on a company the
+// investor hasn't saved, which waits in Pitch ideas.
+export type Placement = { planet: string; moon: string; kind?: string; tickers?: string[]; stock?: string; idea?: boolean };
 
-// Rebuild the space as planets › moons from an AI plan. Hand-organized (pinned) planets, stock
-// planets and everything in them are left alone; pitches, models and filings on one company go
-// to that company's stock planet; bubbles keep their ids and colors when their names survive;
-// notes the plan missed stay where they were; bubbles left empty are removed.
+// Rebuild the space as planets › moons from an AI plan. Hand-organized (pinned) planets, Stock
+// Pitches included, and everything in them are left alone; notes on a saved pitch join it, other
+// pitches go to Pitch ideas; bubbles keep their ids and colors when their names survive; notes the
+// plan missed stay where they were; bubbles left empty are removed.
 export function applyPlan(g: Graph, placements: Map<string, Placement>): Graph {
   const pinnedScope = new Set<string>();
-  for (const b of g.bubbles) if (b.parentId === null && (b.pinned || isStock(b))) [b.id, ...descendantsOf(b.id, g.bubbles)].forEach(id => pinnedScope.add(id));
+  for (const b of g.bubbles) if (b.parentId === null && b.pinned) [b.id, ...descendantsOf(b.id, g.bubbles)].forEach(id => pinnedScope.add(id));
   let bubbles = g.bubbles.slice();
-  const stockFor = (ticker: string, company?: string, stance?: Stance) => {
-    const r = addStock(bubbles, ticker, company, stance);
+  const ideasId = () => {
+    const r = ensureIdeas(bubbles);
     bubbles = r.bubbles;
     pinnedScope.add(r.id);
+    pinnedScope.add(pitchesOf(bubbles)!.id);
     return r.id;
   };
   const planetIds = new Map<string, string>();
@@ -194,8 +247,10 @@ export function applyPlan(g: Graph, placements: Map<string, Placement>): Graph {
   };
   const items = g.items.map(i => {
     const p = placements.get(i.id);
-    if (!p || pinnedScope.has(i.bubbleId) || (!p.planet.trim() && !p.stock)) return i;
-    const bubbleId = p.stock ? stockFor(p.stock, p.company, p.stance) : moonFor(planetFor(p.planet), p.moon);
+    if (!p || pinnedScope.has(i.bubbleId)) return i;
+    const saved = p.stock ? stockOf(p.stock, bubbles)?.id : undefined;
+    if (!saved && !p.idea && !p.planet.trim()) return i;
+    const bubbleId = saved ?? (p.idea ? ideasId() : moonFor(planetFor(p.planet), p.moon));
     return {
       ...i, bubbleId,
       kind: i.kind || p.kind || undefined,

@@ -1,15 +1,15 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight, FolderInput, Gem, Minus, Trash2 } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Bookmark, FolderInput, Gem, Minus, Trash2 } from "lucide-react";
 import SidePanel from "./SidePanel";
 import { SourceGlyph, timeAgo } from "./bits";
 import { KIND_LABEL } from "@/components/space/ListView";
-import { stockOf, type Bubble, type Insight, type Item, type Link } from "@/lib/graph";
+import { PITCH_KINDS, ideasOf, stockOf, type Bubble, type Insight, type Item, type Link } from "@/lib/graph";
 
 // Everything about one saved note, including what it's bonded to.
-export default function ItemPanel({ item, path, hue, items, links, insights, bubbles, onClose, onMove, onDelete, onOpenItem, onOpenInsight, onOpenTicker }: {
+export default function ItemPanel({ item, path, hue, items, links, insights, bubbles, onClose, onMove, onDelete, onSavePitch, onOpenItem, onOpenInsight, onOpenTicker }: {
   item: Item | null; path: string; hue: number; items: Item[]; links: Link[]; insights: Insight[]; bubbles: Bubble[];
-  onClose: () => void; onMove: () => void; onDelete: () => void;
+  onClose: () => void; onMove: () => void; onDelete: () => void; onSavePitch: (ticker: string) => void;
   onOpenItem: (id: string) => void; onOpenInsight: (id: string) => void; onOpenTicker: (t: string) => void;
 }) {
   const raw = item && item.raw.trim() !== item.url ? item.raw.trim() : "";
@@ -20,6 +20,9 @@ export default function ItemPanel({ item, path, hue, items, links, insights, bub
       .sort((x, y) => y.l.strength - x.l.strength)
     : [];
   const deductions = item ? insights.filter(s => s.itemIds.includes(item.id)) : [];
+  // a pitch the AI spotted waits for the investor to save it
+  const lead = item?.tickers?.[0];
+  const pitchable = !!item && !!lead && !stockOf(lead, bubbles) && (PITCH_KINDS.has(item.kind ?? "") || item.bubbleId === ideasOf(bubbles)?.id);
 
   return (
     <SidePanel openKey={item?.id ?? null} hue={hue} eyebrow={path} onClose={onClose}>
@@ -43,6 +46,11 @@ export default function ItemPanel({ item, path, hue, items, links, insights, bub
             </div>
           )}
           {item.summary && <p className="c-panel-summary">{item.summary}</p>}
+          {pitchable && (
+            <button className="c-btn c-btn-primary c-save-pitch" onClick={() => onSavePitch(lead!)}>
+              <Bookmark size={15} /> Save ${lead} as a pitch
+            </button>
+          )}
           {item.url && (
             <a className="c-panel-link" href={item.url} target="_blank" rel="noreferrer">
               Open original <ArrowUpRight size={15} />
