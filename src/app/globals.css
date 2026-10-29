@@ -452,6 +452,21 @@ kbd { font-family: var(--font); font-size: 11px; color: var(--ink-3); border: 1p
 }
 .w-node-insight .w-label { fill: hsl(46 100% 78%); font-weight: 600; }
 .w-svg { --k: 1; }
+.c-clean-ages { margin-top: 16px; align-items: center; flex-wrap: wrap; }
+.c-clean-label { font-size: 13px; color: var(--ink-3); margin-right: 6px; }
+.c-clean-list { max-height: min(52vh, 460px); }
+.c-clean-list .c-lv-group-title { margin: 14px 0 6px; }
+.c-clean-row {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 12px; text-align: left;
+  opacity: 0.55; transition: background 0.2s, opacity 0.2s;
+}
+.c-clean-row.is-on { opacity: 1; }
+.c-clean-row:hover { background: rgba(255, 255, 255, 0.05); }
+.c-clean-box {
+  flex: none; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
+  border: 1.5px solid var(--line-2); color: #fff;
+}
+.c-clean-row.is-on .c-clean-box { background: var(--red); border-color: var(--red); }
 .c-save-pitch { width: 100%; justify-content: center; margin-top: 16px; }
 .w-label, .w-edge-label { font-size: calc(13px / var(--k)); stroke-width: calc(4px / var(--k)); }
 .w-label-hidden { opacity: 0; }
