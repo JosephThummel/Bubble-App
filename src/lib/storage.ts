@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 export type Bubble = {
   id: string; name: string; parentId: string | null; hue: number; pinned?: boolean;
   ticker?: string; stance?: Stance; model?: StockModel;
+  newsEmail?: boolean; // email the news watch's findings on this saved pitch
 };
 export type Stance = "long" | "short" | "watch";
 // The investor's own forecast, from their model or typed in. Money in millions, per-share in units.
@@ -42,6 +43,8 @@ export interface GraphStore {
   readonly connectionsReady: boolean;
   // False when the database predates the note and stock details (migration 0003 not run).
   readonly detailsReady: boolean;
+  // False when the database predates the news watch on saved pitches (migration 0004 not run).
+  readonly newsReady: boolean;
 }
 
 const STORE_KEY = "constellation:graph:v3";
@@ -54,6 +57,7 @@ const complete = (g: Partial<Graph>): Graph => ({
 class LocalStore implements GraphStore {
   readonly connectionsReady = true;
   readonly detailsReady = true;
+  readonly newsReady = true;
   async load(seed: Graph) {
     try {
       const raw = localStorage.getItem(STORE_KEY);
@@ -67,7 +71,7 @@ class LocalStore implements GraphStore {
   }
 }
 
-type BubbleRow = { id: string; name: string; parent_id: string | null; hue: number; pinned: boolean; ticker?: string | null; stance?: string | null; model?: StockModel | null };
+type BubbleRow = { id: string; name: string; parent_id: string | null; hue: number; pinned: boolean; ticker?: string | null; stance?: string | null; model?: StockModel | null; news_email?: boolean };
 type ItemRow = {
   id: string; bubble_id: string; title: string; summary: string;
   url: string; source: string; raw: string; created_at: number;
@@ -80,6 +84,7 @@ type InsightRow = { id: string; item_ids: string[]; title: string; body: string;
 const fromBubbleRow = (r: BubbleRow): Bubble => ({
   id: r.id, name: r.name, parentId: r.parent_id, hue: r.hue, pinned: r.pinned,
   ticker: r.ticker || undefined, stance: (r.stance as Stance) || undefined, model: r.model || undefined,
+  newsEmail: r.news_email || undefined,
 });
 const fromItemRow = (r: ItemRow): Item => ({
   id: r.id, bubbleId: r.bubble_id, title: r.title, summary: r.summary,
@@ -106,6 +111,7 @@ class SupabaseStore implements GraphStore {
   private db = createClient();
   connectionsReady = true;
   detailsReady = true;
+  newsReady = true;
 
   private toItemRow(i: Item): ItemRow {
     const row: ItemRow = {
@@ -120,6 +126,7 @@ class SupabaseStore implements GraphStore {
   private toBubbleRow(b: Bubble): BubbleRow {
     const row: BubbleRow = { id: b.id, name: b.name, parent_id: b.parentId, hue: b.hue, pinned: !!b.pinned };
     if (this.detailsReady) { row.ticker = b.ticker ?? null; row.stance = b.stance ?? null; row.model = b.model ?? null; }
+    if (this.newsReady) row.news_email = !!b.newsEmail;
     return row;
   }
 
@@ -138,6 +145,9 @@ class SupabaseStore implements GraphStore {
     this.detailsReady = this.connectionsReady &&
       (i.data.length ? "reads" in i.data[0] : true) && (b.data.length ? "ticker" in b.data[0] : true) &&
       (i.data.length && b.data.length ? true : await this.probeDetails());
+    // The news watch's email switch arrives with migration 0004.
+    this.newsReady = this.detailsReady &&
+      (b.data.length ? "news_email" in b.data[0] : !(await this.db.from("bubbles").select("news_email").limit(1)).error);
     const links = this.connectionsReady ? (l.data as LinkRow[]) : [];
     const insights = this.connectionsReady ? (s.data as InsightRow[]).map(fromInsightRow) : [];
 

@@ -372,9 +372,10 @@ export default function Constellation() {
                 onOpenItem={setOpenItemId} onOpenInsight={setOpenInsightId} />
             ) : stockFocus ? (
               <div className="c-scroll">
-                <StockDashboard stock={stockFocus} items={items} bubbles={bubbles} connectionsReady={c.connectionsReady}
+                <StockDashboard stock={stockFocus} items={items} bubbles={bubbles} connectionsReady={c.connectionsReady} newsReady={c.newsReady}
                   onOpenItem={setOpenItemId} onScan={() => c.scanReads(stockFocus.id)}
-                  onSaveModel={model => c.updateStock(stockFocus.id, { model })} />
+                  onSaveModel={model => c.updateStock(stockFocus.id, { model })}
+                  onNewsEmail={on => c.updateStock(stockFocus.id, { newsEmail: on })} />
               </div>
             ) : showOrbs ? (
               <OrbField bubbles={children} allBubbles={bubbles} items={items} pulseId={pulseId} onOpen={(id, o) => go(id, o)} />
