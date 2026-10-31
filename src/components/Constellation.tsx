@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react";
-import { ArrowLeft, Bookmark, BookmarkMinus, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkMinus, Eraser, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import ItemGrid from "@/components/space/ItemGrid";
@@ -11,6 +11,7 @@ import Starfield from "@/components/space/Starfield";
 import WebView from "@/components/space/WebView";
 import AddSheet from "@/components/ui/AddSheet";
 import AskSheet from "@/components/ui/AskSheet";
+import CleanupSheet from "@/components/ui/CleanupSheet";
 import CommandPalette from "@/components/ui/CommandPalette";
 import { ConfirmDialog, CoverDialog, MoveDialog, NameDialog } from "@/components/ui/Dialogs";
 import Island from "@/components/ui/Island";
@@ -53,6 +54,7 @@ type Dialog =
   | { kind: "loose" }
   | { kind: "reorganize" }
   | { kind: "unsave"; id: string }
+  | { kind: "cleanup"; at: number }
   | { kind: "cover"; ticker?: string; name?: string; itemId?: string; stance?: "long" | "short" };
 
 export default function Constellation() {
@@ -80,6 +82,8 @@ export default function Constellation() {
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   // the space as it was before a reorganize, offered back for a while as Undo
   const [undoPlan, setUndoPlan] = useState<Graph | null>(null);
+  // a clean-up, offered back for a while as Undo
+  const [undoRemove, setUndoRemove] = useState<{ label: string; run: () => void } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   const bubbles = useMemo(() => c.graph?.bubbles ?? [], [c.graph]);
@@ -329,6 +333,11 @@ export default function Constellation() {
                   <Bookmark size={13} /> Save a pitch
                 </button>
               )}
+              {scopeItems.length > 0 && (
+                <button className="c-pill" onClick={() => setDialog({ kind: "cleanup", at: Date.now() })} title="Remove stale pitches and old notes">
+                  <Eraser size={13} /> Clean up
+                </button>
+              )}
               {!focus && total > 1 && (
                 <button className="c-pill" onClick={() => setDialog({ kind: "reorganize" })} disabled={c.activity.kind === "reshaping"}
                   title="Regroup everything into a few broad planets with moons">
@@ -415,7 +424,13 @@ export default function Constellation() {
             <button className="c-btn c-btn-ghost" onClick={() => { c.restore(undoPlan); setUndoPlan(null); }}>Undo</button>
           </motion.div>
         )}
-        {notice && !c.saveError && !undoPlan && (
+        {undoRemove && !c.saveError && !undoPlan && (
+          <motion.div key="undo-remove" className="c-toast glass c-toast-action" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}>
+            <span>{undoRemove.label}</span>
+            <button className="c-btn c-btn-ghost" onClick={() => { undoRemove.run(); setUndoRemove(null); }}>Undo</button>
+          </motion.div>
+        )}
+        {notice && !c.saveError && !undoPlan && !undoRemove && (
           <motion.div key="notice" className="c-toast glass" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
             onClick={() => setNotice("")}>
             {notice}
@@ -507,6 +522,16 @@ export default function Constellation() {
         sub={`Its ${unsaving ? deepCount(unsaving.id, bubbles, items) : 0} notes move back to Pitch ideas, and its dashboard and model numbers go. You can save it again from any of its notes.`}
         cta="Unsave" onClose={closeDialog}
         onConfirm={() => { if (unsaving) { go(unsaving.parentId); c.unsaveStock(unsaving.id); } }} />
+      <CleanupSheet open={dialog.kind === "cleanup"} at={dialog.kind === "cleanup" ? dialog.at : 0} items={scopeItems} bubbles={bubbles}
+        scopeName={focus?.name} onClose={closeDialog}
+        onRemove={(itemIds, pitchIds) => {
+          const n = itemIds.length + items.filter(i => pitchIds.includes(i.bubbleId)).length;
+          const run = c.removeMany(itemIds, pitchIds);
+          if (pitchIds.includes(fid ?? "")) go(focus?.parentId ?? null);
+          const undo = { label: `Removed ${n} ${n === 1 ? "note" : "notes"}${pitchIds.length ? ` and ${pitchIds.length} ${pitchIds.length === 1 ? "pitch" : "pitches"}` : ""}.`, run };
+          setUndoRemove(undo);
+          setTimeout(() => setUndoRemove(u => (u === undo ? null : u)), 30000);
+        }} />
       <MoveDialog open={dialog.kind === "move"} title={dialogItem?.title ?? ""} currentId={dialogItem?.bubbleId ?? ""}
         bubbles={bubbles} onClose={closeDialog}
         onPick={id => dialogItem && c.moveItem(dialogItem.id, id)} />

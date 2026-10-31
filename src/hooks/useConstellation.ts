@@ -610,10 +610,34 @@ export function useConstellation() {
     update(cur => ({ ...cur, insights: cur.insights.filter(s => s.id !== id) }));
   }, [update]);
 
+  // Remove many notes and saved pitches at once. Returns a function that puts them all back.
+  const removeMany = useCallback((itemIds: string[], pitchIds: string[]): (() => void) => {
+    const before = graphRef.current;
+    if (!before) return () => {};
+    update(cur => {
+      let g = cur;
+      for (const id of pitchIds) g = removeBubble(g, id);
+      return removeItems(g, itemIds);
+    });
+    const after = graphRef.current!;
+    return () => update(cur => {
+      const has = <T extends { id: string }>(list: T[]) => new Set(list.map(x => x.id));
+      const b = has(cur.bubbles), i = has(cur.items), l = has(after.links), s = has(after.insights);
+      const back = new Map(before.insights.map(x => [x.id, x]));
+      return {
+        bubbles: [...cur.bubbles, ...before.bubbles.filter(x => !b.has(x.id))],
+        items: [...cur.items, ...before.items.filter(x => !i.has(x.id))],
+        links: [...cur.links, ...before.links.filter(x => !l.has(x.id))],
+        // deductions the removal trimmed or dropped come back whole
+        insights: [...cur.insights.map(x => back.get(x.id) ?? x), ...before.insights.filter(x => !s.has(x.id) && !cur.insights.some(y => y.id === x.id))],
+      };
+    });
+  }, [update]);
+
   const deleteBubble = useCallback((id: string) => update(cur => removeBubble(cur, id)), [update]);
 
   return {
     graph, loadError, saveError, activity, connectionsReady, detailsReady, linkAll,
-    addContent, addFiles, reorganizeSpace, restore, findIdeas, scanReads, coverStock, unsaveStock, updateStock, createBubble, renameBubble, togglePin, moveItem, deleteItem, deleteBubble, dismissInsight,
+    addContent, addFiles, reorganizeSpace, restore, findIdeas, scanReads, coverStock, unsaveStock, updateStock, removeMany, createBubble, renameBubble, togglePin, moveItem, deleteItem, deleteBubble, dismissInsight,
   };
 }
