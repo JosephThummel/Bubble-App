@@ -451,6 +451,77 @@ export const cleanStockLite = (s: Partial<StockLite>): StockLite => ({
   thesis: String(s.thesis ?? "").slice(0, 400),
 });
 
+// The news agent's view of one saved pitch: what the investor thinks, and what it already reported.
+export type PitchForNews = {
+  ticker: string; name: string; stance: string; thesis: string;
+  notes: { title: string; summary: string; kind: string; date: string }[];
+  seen: { headline: string; url: string; date: string }[];
+  since: string; // YYYY-MM-DD, look for news from this day on
+};
+export type NewsKind = "price-move" | "press-release" | "earnings" | "filing" | "analyst" | "deal" | "regulatory" | "management" | "industry" | "other";
+export type NewsFinding = {
+  kind: NewsKind; headline: string; url: string; source: string; published: string;
+  summary: string; take: string; impact: "positive" | "negative" | "mixed" | "neutral"; importance: 1 | 2 | 3;
+};
+const NEWS_KINDS = new Set<string>(["price-move", "press-release", "earnings", "filing", "analyst", "deal", "regulatory", "management", "industry", "other"]);
+const NEWS_IMPACT = /^(positive|negative|mixed|neutral)$/;
+
+/* scan the news on a saved pitch's company and say what each story means for the pitch */
+export async function watchNews(p: PitchForNews): Promise<{ findings: NewsFinding[]; take: string }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt =
+`You are the analyst on a hedge fund investor's team who watches the tape for one of their saved stock pitches. Today is ${today}.
+
+THE PITCH: $${p.ticker} ${p.name}${p.stance ? ` (${p.stance})` : ""}${p.thesis ? `. ${p.thesis}` : ""}
+Their notes on it (newest first):
+${p.notes.map(n => `- [${n.kind || "note"}${n.date ? `, ${n.date}` : ""}] ${n.title}: ${n.summary}`).join("\n") || "(none)"}
+
+Already reported to them (do not report these again, even under a different headline or source):
+${p.seen.map(s => `- ${s.date} ${s.headline}${s.url ? ` <${s.url}>` : ""}`).join("\n") || "(nothing yet)"}
+
+Use web_search (and web_fetch to read a press release or article when the search snippet is thin) to find what has come out about ${p.name} ($${p.ticker}) since ${p.since}: news that moved or could move the stock, the company's own press releases and investor-relations announcements, earnings and guidance, SEC filings such as 8-Ks, analyst upgrades, downgrades and target changes, deals, management changes, regulation, and customer, supplier or competitor news that directly changes the case. Search the company name and the ticker, and its press release or IR page. Skip stories older than ${p.since}, generic market wrap-ups, listicles, and stock-promotion sites.
+
+For each story worth the investor's attention, give:
+- "kind": one of price-move, press-release, earnings, filing, analyst, deal, regulatory, management, industry, other
+- "headline": the story's headline, plain
+- "url": the link to the original story or release (from your search results; never invent one)
+- "source": publisher, e.g. "Reuters", "Company press release"
+- "published": YYYY-MM-DD
+- "summary": 1-2 sentences of what happened, with the numbers
+- "take": 1-2 sentences of feedback on THEIR pitch: does it support or undercut the thesis, which assumption it touches, and what to check next
+- "impact": positive, negative, mixed or neutral for their stance (for a short, bad news for the company is positive)
+- "importance": 3 = likely moves the stock or changes the thesis, 2 = worth knowing, 1 = minor
+At most 8 stories, most important first. An empty list is a fine answer when nothing new has come out.
+
+Also write "take": 2-4 sentences of overall feedback on the pitch in light of what you found (what the news says about the thesis, and the one thing to watch next). Use "" if you found nothing new.
+
+Respond with ONLY this JSON, no markdown:
+{"findings":[{"kind":"","headline":"","url":"","source":"","published":"","summary":"","take":"","impact":"neutral","importance":2}],"take":""}`;
+  const tools: Anthropic.Beta.BetaToolUnion[] = [
+    { type: "web_search_20260209", name: "web_search", max_uses: 6 },
+    { type: "web_fetch_20260209", name: "web_fetch", max_uses: 3 },
+  ];
+  const content = await run(WORK_MODEL, prompt, { tools, effort: "medium" });
+  const out = extractJSON<{ findings?: unknown; take?: unknown }>(content);
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const findings = (Array.isArray(out.findings) ? out.findings : [])
+    .map(f => f as Record<string, unknown>)
+    .map(f => ({
+      kind: (NEWS_KINDS.has(String(f.kind)) ? String(f.kind) : "other") as NewsKind,
+      headline: str(f.headline, 300),
+      url: /^https?:\/\//.test(String(f.url)) ? str(f.url, 1000) : "",
+      source: str(f.source, 80),
+      published: /^\d{4}-\d{2}-\d{2}$/.test(String(f.published)) ? String(f.published) : "",
+      summary: str(f.summary, 600),
+      take: str(f.take, 600),
+      impact: (NEWS_IMPACT.test(String(f.impact)) ? String(f.impact) : "neutral") as NewsFinding["impact"],
+      importance: (Math.min(3, Math.max(1, Math.round(Number(f.importance) || 1)))) as NewsFinding["importance"],
+    }))
+    .filter(f => f.headline && f.summary)
+    .slice(0, 8);
+  return { findings, take: findings.length ? str(out.take, 1200) : "" };
+}
+
 export type NoteForAsking = { theme: string; title: string; summary: string; facts: string[]; source: string; url: string; date: string; text: string; published?: string; kind?: string; tickers?: string[] };
 export type DeductionForAsking = { title: string; body: string; notes: number[] };
 export type Turn = { role: "user" | "assistant"; content: string };
