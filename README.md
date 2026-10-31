@@ -72,6 +72,14 @@ mode on that browser is copied into their account.
   (`src/lib/valuation.ts`), read-throughs from the rest of your research, and your files on it.
   Filing gives each note read-throughs to covered stocks; `src/app/api/reads` scans everything saved
   for a newly saved pitch.
+- **News watch** (`src/lib/news.ts`, `src/app/api/news`): for each saved pitch (not Pitch ideas), an AI agent
+  searches the web for what's new on the company (price-moving news, press releases, earnings, 8-Ks, analyst
+  moves, deals) and writes what each story means for the pitch, plus an overall take. It runs when you open a
+  pitch whose last look is older than `NEWS_SCAN_HOURS`, and in the background through
+  `src/app/api/news/cron`, which the hourly GitHub Action in `.github/workflows/news-watch.yml` calls. Turn on
+  **Email me** on a pitch's dashboard to get new stories by email (Resend). Setup: run
+  `supabase/migrations/0004_pitch_news.sql`; set `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` in Vercel; add
+  `APP_URL` and `CRON_SECRET` as GitHub Actions secrets; for email, set `RESEND_API_KEY` and `NEWS_EMAIL_FROM`.
 - `src/lib/filings.ts` keeps the cover, MD&A, risk factors and income statement of long 10-Ks and 10-Qs;
   `src/lib/sec.ts` reads sec.gov filing links server-side with the `SEC_USER_AGENT` EDGAR asks for.
 - `src/lib/stocks.ts` pulls five years of daily prices and financial statements for a ticker from

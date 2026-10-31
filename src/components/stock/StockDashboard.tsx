@@ -5,6 +5,7 @@ import { ArrowDownRight, ArrowUpRight, Radar, Minus } from "lucide-react";
 import { useState } from "react";
 import { PriceBlock, ValuationBlock } from "./Charts";
 import ModelCard from "./ModelCard";
+import NewsWatch from "./NewsWatch";
 import { compact, sliceRange, stats, useStock, type MultipleKey, type RangeKey } from "./useStock";
 import { SourceGlyph } from "@/components/ui/bits";
 import { NoKey } from "@/components/ui/StockPanel";
@@ -23,9 +24,10 @@ const date = (i: Item) => new Date(i.publishedAt ? `${i.publishedAt}T12:00:00` :
 
 // A covered stock opened up: how it has traded, what it trades at on your numbers, what the
 // rest of your research means for it, and everything you've saved on it.
-export default function StockDashboard({ stock, items, bubbles, connectionsReady, onOpenItem, onScan, onSaveModel }: {
-  stock: Bubble & { ticker: string }; items: Item[]; bubbles: Bubble[]; connectionsReady: boolean;
+export default function StockDashboard({ stock, items, bubbles, connectionsReady, newsReady, onOpenItem, onScan, onSaveModel, onNewsEmail }: {
+  stock: Bubble & { ticker: string }; items: Item[]; bubbles: Bubble[]; connectionsReady: boolean; newsReady: boolean;
   onOpenItem: (id: string) => void; onScan: () => Promise<number | null>; onSaveModel: (m: StockModel | undefined) => void;
+  onNewsEmail: (on: boolean) => void;
 }) {
   const [range, setRange] = useState<RangeKey>("1Y");
   const [multiple, setMultiple] = useState<MultipleKey>("pe");
@@ -70,7 +72,11 @@ export default function StockDashboard({ stock, items, bubbles, connectionsReady
           source={source ? { id: source.id, title: source.title } : undefined} onSave={onSaveModel} onOpenSource={onOpenItem} />
       </motion.div>
 
-      <motion.section className="c-dash-card c-dash-reads" {...card(3)}>
+      <motion.section className="c-dash-card c-dash-news" {...card(3)}>
+        <NewsWatch key={stock.id} stock={stock} own={own} newsReady={newsReady} onEmail={onNewsEmail} />
+      </motion.section>
+
+      <motion.section className="c-dash-card c-dash-reads" {...card(4)}>
         <ReadsHead ticker={stock.ticker} count={reads.length} connectionsReady={connectionsReady} onScan={onScan} />
         {reads.length ? (
           <ul className="c-reads">
@@ -96,7 +102,7 @@ export default function StockDashboard({ stock, items, bubbles, connectionsReady
       </motion.section>
       </div>
 
-      <motion.section className="c-dash-card c-dash-files" {...card(4)}>
+      <motion.section className="c-dash-card c-dash-files" {...card(5)}>
         <div className="c-dash-head"><div className="c-eyebrow">Your research on {stock.ticker}</div><span className="c-dash-sub">{own.length} {own.length === 1 ? "note" : "notes"}</span></div>
         {own.length ? GROUPS.map(g => {
           const list = own.filter(i => (g.kinds ? g.kinds.includes(i.kind ?? "") : !GROUPS.some(x => x.kinds?.includes(i.kind ?? ""))))

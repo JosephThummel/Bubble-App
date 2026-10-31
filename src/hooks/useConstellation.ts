@@ -63,6 +63,7 @@ export function useConstellation() {
   const [linking, setLinking] = useState<string | null>(null);
   const [connectionsReady, setConnectionsReady] = useState(true);
   const [detailsReady, setDetailsReady] = useState(true);
+  const [newsReady, setNewsReady] = useState(true);
   const activity: Activity = status.kind !== "idle" ? status
     : reshaping ? { kind: "reshaping", label: `Reshaping ${reshaping}…` }
     : linking ? { kind: "linking", label: linking }
@@ -85,6 +86,7 @@ export function useConstellation() {
         savedRef.current = filled; graphRef.current = filled; setGraphState(filled);
         setConnectionsReady(store.connectionsReady);
         setDetailsReady(store.detailsReady);
+        setNewsReady(store.newsReady);
         // on failure, the next change's save carries the dates and the pitch planet instead
         if (filled !== g) store.save(g, filled).catch(() => { if (savedRef.current === filled) savedRef.current = g; });
       })
@@ -565,7 +567,7 @@ export function useConstellation() {
   // Take back a saved pitch: its notes go back to Pitch ideas.
   const unsaveStock = useCallback((id: string) => update(cur => unsavePitch(cur, id)), [update]);
 
-  const updateStock = useCallback((id: string, patch: { stance?: Stance; model?: StockModel | undefined; name?: string }) => {
+  const updateStock = useCallback((id: string, patch: { stance?: Stance; model?: StockModel | undefined; name?: string; newsEmail?: boolean }) => {
     if (patch.model) patch = { ...patch, model: { ...patch.model, updatedAt: Date.now() } };
     update(cur => ({ ...cur, bubbles: cur.bubbles.map(b => (b.id === id ? { ...b, ...patch } : b)) }));
   }, [update]);
@@ -637,7 +639,7 @@ export function useConstellation() {
   const deleteBubble = useCallback((id: string) => update(cur => removeBubble(cur, id)), [update]);
 
   return {
-    graph, loadError, saveError, activity, connectionsReady, detailsReady, linkAll,
+    graph, loadError, saveError, activity, connectionsReady, detailsReady, newsReady, linkAll,
     addContent, addFiles, reorganizeSpace, restore, findIdeas, scanReads, coverStock, unsaveStock, updateStock, removeMany, createBubble, renameBubble, togglePin, moveItem, deleteItem, deleteBubble, dismissInsight,
   };
 }
