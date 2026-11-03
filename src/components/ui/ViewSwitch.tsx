@@ -1,17 +1,16 @@
 "use client";
 
 import { motion } from "motion/react";
-import { LayoutDashboard, List, Network, Orbit } from "lucide-react";
+import { LayoutDashboard, List, Network } from "lucide-react";
 
-export type ViewMode = "orbits" | "list" | "web";
+export type ViewMode = "web" | "list" | "dashboard";
 
-// Segmented control with a sliding thumb.
-// In a stock planet the first view is its dashboard rather than orbits.
+// Segmented control with a sliding thumb. A saved pitch adds its dashboard as the first view.
 export default function ViewSwitch({ mode, onChange, dashboard }: { mode: ViewMode; onChange: (m: ViewMode) => void; dashboard?: boolean }) {
   const opts: { key: ViewMode; label: string; icon: React.ReactNode }[] = [
-    dashboard ? { key: "orbits", label: "Dashboard", icon: <LayoutDashboard size={14} /> } : { key: "orbits", label: "Orbits", icon: <Orbit size={14} /> },
-    { key: "list", label: "List", icon: <List size={14} /> },
+    ...(dashboard ? [{ key: "dashboard" as const, label: "Dashboard", icon: <LayoutDashboard size={14} /> }] : []),
     { key: "web", label: "Web", icon: <Network size={14} /> },
+    { key: "list", label: "List", icon: <List size={14} /> },
   ];
   return (
     <div className="c-seg" role="group" aria-label="View">

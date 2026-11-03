@@ -1,9 +1,9 @@
 # Constellation
 
 A thinking space for investors: save tweets, posts, articles and notes, and AI files each one
-into a field of themed bubbles that reorganize themselves as you save. It also bonds related notes
+into a living web of ideas: topics are hubs, notes hang off them, and the connections the AI finds are drawn as threads between them. It also bonds related notes
 together and writes **deductions**: takeaways you only get by combining sources, like GW of buildout
-times tokens per GW giving total compute. Switch to the **Web** view to see the whole network, and
+times tokens per GW giving total compute. Click a hub to fly into that topic, switch to **List** to read, and
 press **Ask** (⌘J) to question one bubble or your whole library, with answers that cite your notes.
 Drop in files too: PDFs, images and screenshots, Word, Excel, PowerPoint, CSV and text are read and filed
 like any other save.

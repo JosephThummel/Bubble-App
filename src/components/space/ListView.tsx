@@ -16,7 +16,7 @@ const SORTS: { key: SortKey; label: string }[] = [
 ];
 const GROUPS: { key: GroupKey; label: string }[] = [
   { key: "none", label: "None" },
-  { key: "moon", label: "Planet & moon" },
+  { key: "moon", label: "Topic" },
   { key: "ticker", label: "Ticker" },
   { key: "kind", label: "Kind" },
   { key: "source", label: "Source" },

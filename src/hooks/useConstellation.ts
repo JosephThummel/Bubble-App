@@ -90,7 +90,7 @@ export function useConstellation() {
         // on failure, the next change's save carries the dates and the pitch planet instead
         if (filled !== g) store.save(g, filled).catch(() => { if (savedRef.current === filled) savedRef.current = g; });
       })
-      .catch(() => { if (alive) setLoadError("Couldn't load your space. Check your connection and refresh."); });
+      .catch(() => { if (alive) setLoadError("Couldn't load your ideas. Check your connection and refresh."); });
     return () => { alive = false; };
   }, []);
 
@@ -467,7 +467,7 @@ export function useConstellation() {
       if (notes.length < 2) return { error: "Save a few more notes first." };
       const line = (i: Item) => `${i.title}${i.summary ? " :: " + i.summary.slice(0, 140) : ""}`;
 
-      setActivity({ kind: "reshaping", label: `Designing planets for ${notes.length} notes…` });
+      setActivity({ kind: "reshaping", label: `Designing topics for ${notes.length} notes…` });
       const { planets } = await postJSON<{ planets: { name: string; moons: string[] }[] }>("/api/organize", {
         step: "plan",
         notes: notes.map(i => `${line(i)} :: ${pathLabel(i.bubbleId, g.bubbles)}`),
@@ -497,10 +497,10 @@ export function useConstellation() {
             }
           } catch { failures++; }
           done++;
-          setActivity({ kind: "reshaping", label: `Placing notes into ${planets.length} planets (${Math.min(done * 80, notes.length)} of ${notes.length})…` });
+          setActivity({ kind: "reshaping", label: `Placing notes into ${planets.length} topics (${Math.min(done * 80, notes.length)} of ${notes.length})…` });
         }
       };
-      setActivity({ kind: "reshaping", label: `Placing notes into ${planets.length} planets…` });
+      setActivity({ kind: "reshaping", label: `Placing notes into ${planets.length} topics…` });
       await Promise.all(Array.from({ length: Math.min(4, batches.length) }, worker));
       if (!placements.size) return { error: "Couldn't place the notes. Try again in a moment." };
 
@@ -508,7 +508,7 @@ export function useConstellation() {
       update(cur => applyPlan(cur, placements));
       const after = graphRef.current!;
       const count = after.bubbles.filter(b => b.parentId === null && !b.ticker).length;
-      flash({ kind: "imported", label: `Reorganized into ${count} planets` }, 5000);
+      flash({ kind: "imported", label: `Reorganized into ${count} topics` }, 5000);
       return failures ? { before, error: `${notes.length - placements.size} notes couldn't be placed and stayed where they were.` } : { before };
     } catch {
       return { error: "Couldn't reach the model to reorganize. Try again in a moment." };
