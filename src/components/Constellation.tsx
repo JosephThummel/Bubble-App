@@ -1,14 +1,12 @@
 "use client";
 
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react";
-import { ArrowLeft, Bookmark, BookmarkMinus, Eraser, FileUp, Gem, Link2, Lock, LogOut, PencilLine, Plus, Search, Sparkles, StickyNote, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkMinus, Eraser, FileUp, Gem, Link2, Lock, LogOut, Network, PencilLine, Plus, Search, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import ItemGrid from "@/components/space/ItemGrid";
+import Backdrop from "@/components/space/Backdrop";
 import ListView from "@/components/space/ListView";
-import OrbField from "@/components/space/OrbField";
-import Starfield from "@/components/space/Starfield";
-import WebView from "@/components/space/WebView";
+import WebView, { type Hub } from "@/components/space/WebView";
 import AddSheet from "@/components/ui/AddSheet";
 import AskSheet from "@/components/ui/AskSheet";
 import CleanupSheet from "@/components/ui/CleanupSheet";
@@ -20,7 +18,6 @@ import InsightsSheet from "@/components/ui/InsightsSheet";
 import ItemPanel from "@/components/ui/ItemPanel";
 import StockPanel from "@/components/ui/StockPanel";
 import StockDashboard from "@/components/stock/StockDashboard";
-import Sheet from "@/components/ui/Sheet";
 import ViewSwitch, { type ViewMode } from "@/components/ui/ViewSwitch";
 import { useConstellation } from "@/hooks/useConstellation";
 import { findLinks, looksLikeLinkList } from "@/lib/files";
@@ -30,8 +27,8 @@ import { supabaseEnabled } from "@/lib/supabase/config";
 
 type Nav = { dir: 1 | -1; ox: number; oy: number };
 
-// Levels zoom like a camera: going in, the old level rushes past toward the
-// bubble you clicked while the new one grows out of the distance.
+// Levels zoom like a camera: going in, the old web rushes past toward the
+// hub you clicked while the new one grows out of the distance.
 const levelVariants: Variants = {
   enter: (n: Nav) => ({ opacity: 0, scale: n.dir > 0 ? 0.55 : 1.6 }),
   center: { opacity: 1, scale: 1, transition: { type: "spring", stiffness: 110, damping: 20, mass: 1 } },
@@ -51,7 +48,6 @@ type Dialog =
   | { kind: "delete"; id: string }
   | { kind: "move"; itemId: string }
   | { kind: "deleteItem"; itemId: string }
-  | { kind: "loose" }
   | { kind: "reorganize" }
   | { kind: "unsave"; id: string }
   | { kind: "cleanup"; at: number }
@@ -78,7 +74,8 @@ export default function Constellation() {
   const [backToAsk, setBackToAsk] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState("");
-  const [mode, setMode] = useState<ViewMode>("orbits");
+  // null picks the natural view: a saved pitch's dashboard, otherwise the web
+  const [pickedMode, setMode] = useState<ViewMode | null>(null);
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   // the space as it was before a reorganize, offered back for a while as Undo
   const [undoPlan, setUndoPlan] = useState<Graph | null>(null);
@@ -93,7 +90,6 @@ export default function Constellation() {
   const fid = focus ? focus.id : null;
   const trail = useMemo(() => trailOf(fid, bubbles), [fid, bubbles]);
   const children = useMemo(() => bubbles.filter(b => b.parentId === fid), [bubbles, fid]);
-  const here = useMemo(() => items.filter(i => i.bubbleId === fid), [items, fid]);
   const openItem = items.find(i => i.id === openItemId) ?? null;
   const links = useMemo(() => c.graph?.links ?? [], [c.graph]);
   const insights = useMemo(() => c.graph?.insights ?? [], [c.graph]);
@@ -104,14 +100,24 @@ export default function Constellation() {
     const scope = new Set([fid, ...descendantsOf(fid, bubbles)]);
     return items.filter(i => scope.has(i.bubbleId));
   }, [items, bubbles, fid]);
-  // In the web, notes cluster by the bubble one level below the focus.
-  const groupOf = useCallback((it: Item) => {
-    const t = trailOf(it.bubbleId, bubbles);
+  // In the web, each note hangs off the topic one level below the focus (or the focus itself).
+  const hubOfBubble = useCallback((bubbleId: string) => {
+    const t = trailOf(bubbleId, bubbles);
     const depth = fid ? trailOf(fid, bubbles).length : 0;
-    const g = t[depth] ?? t[t.length - 1];
-    return { key: g?.id ?? "", hue: g?.hue ?? 232, name: g?.name ?? "" };
+    return t[depth] ?? t[t.length - 1];
   }, [bubbles, fid]);
+  const hubOf = useCallback((it: Item) => hubOfBubble(it.bubbleId)?.id ?? "", [hubOfBubble]);
+  const hueOf = useCallback((it: Item) => bubbles.find(b => b.id === it.bubbleId)?.hue ?? 232, [bubbles]);
+  const hubs = useMemo<Hub[]>(() => {
+    const out: Hub[] = children.map(b => ({ id: b.id, name: b.name, hue: b.hue, count: deepCount(b.id, bubbles, items), ticker: b.ticker, stance: b.stance }));
+    if (focus) out.unshift({ id: focus.id, name: focus.name, hue: focus.hue, count: deepCount(focus.id, bubbles, items), ticker: focus.ticker, stance: focus.stance, center: true });
+    return out;
+  }, [children, focus, bubbles, items]);
   const unlinked = scopeItems.filter(i => !i.linkedAt).length;
+  const scopeLinks = useMemo(() => {
+    const ids = new Set(scopeItems.map(i => i.id));
+    return links.filter(l => ids.has(l.a) && ids.has(l.b)).length;
+  }, [scopeItems, links]);
 
   const zoomTo = useCallback((id: string | null, origin?: { x: number; y: number }) => {
     const depth = (x: string | null) => trailOf(x, bubbles).length;
@@ -122,6 +128,8 @@ export default function Constellation() {
     setNav({ dir, ox, oy });
     setWarp(w => w + dir);
     setFocusId(id);
+    // moving keeps the list if you were reading one; otherwise each place opens on its natural view
+    setMode(m => (m === "list" ? m : null));
   }, [bubbles, fid]);
   const go = useCallback((id: string | null, origin?: { x: number; y: number }) => {
     if (id === fid) return;
@@ -204,8 +212,8 @@ export default function Constellation() {
   if (!c.graph) {
     return (
       <div className="c-root c-boot">
-        <Starfield warp={0} hue={null} />
-        {c.loadError ? <p className="c-boot-error">{c.loadError}</p> : <span className="c-boot-mark">✦</span>}
+        <Backdrop pulse={0} hue={null} />
+        {c.loadError ? <p className="c-boot-error">{c.loadError}</p> : <span className="c-boot-mark"><Network size={30} strokeWidth={1.5} /></span>}
       </div>
     );
   }
@@ -216,10 +224,9 @@ export default function Constellation() {
   const covered = bubbles.filter(isStock).length;
   const isPitches = !!focus && focus.id === pitches?.id;
   const ideaCount = items.filter(i => i.bubbleId === ideasOf(bubbles)?.id).length;
-  const showOrbs = children.length > 0;
   const isTheme = focus?.parentId === null;
   const hue = focus?.hue ?? null;
-  const pulseId = c.activity.kind === "filed" ? c.activity.bubbleId : null;
+  const pulseHub = c.activity.kind === "filed" ? hubOfBubble(c.activity.bubbleId)?.id ?? null : null;
   const panelHue = openItem ? bubbles.find(b => b.id === openItem.bubbleId)?.hue ?? 232 : 232;
   const dialogBubble = dialog.kind === "rename" || dialog.kind === "delete" ? bubbles.find(b => b.id === dialog.id) : null;
   const unsaving = dialog.kind === "unsave" ? bubbles.filter(isStock).find(b => b.id === dialog.id) : undefined;
@@ -227,24 +234,25 @@ export default function Constellation() {
   const closeDialog = () => setDialog({ kind: "none" });
 
   const jumpToItem = (it: Item) => { go(it.bubbleId); setTimeout(() => setOpenItemId(it.id), 350); };
-  // A ticker you cover opens its planet; any other opens a quick look.
+  // A ticker you cover opens its pitch; any other opens a quick look.
   const openTicker = (t: string) => {
     const covered = stockOf(t, bubbles);
     setOpenItemId(null);
     if (covered) { setStockSymbol(null); go(covered.id); } else setStockSymbol(t);
   };
   const stockFocus = isStock(focus) ? focus : null;
+  const mode: ViewMode = pickedMode ?? (stockFocus ? "dashboard" : "web");
   const readCount = stockFocus ? readsFor(stockFocus.ticker, items, stockFocus.id).length : 0;
 
   return (
     <MotionConfig reducedMotion="user">
     <div className="c-root" style={{ "--h": hue ?? 232, "--tint": hue === null ? 0 : 1 } as CSSProperties}>
-      <Starfield warp={warp} hue={hue} />
+      <Backdrop pulse={warp} hue={hue} />
       <div className="c-nebula" aria-hidden />
 
       <header className="c-bar glass">
         <button className="c-brand" onClick={() => go(null)} aria-label="Home">
-          <span className="c-brand-mark">✦</span>
+          <span className="c-brand-mark"><Network size={17} strokeWidth={2} /></span>
           <span className="c-brand-word">Constellation</span>
         </button>
         <button className="c-search-btn" onClick={() => setSearching(true)}>
@@ -286,7 +294,7 @@ export default function Constellation() {
             {focus ? (
               <>
                 <button className="c-back" onClick={() => go(focus.parentId)} aria-label="Back"><ArrowLeft size={16} /></button>
-                <button className="c-crumb" onClick={() => go(null)}>Space</button>
+                <button className="c-crumb" onClick={() => go(null)}>All ideas</button>
                 {trail.slice(0, -1).map(b => (
                   <span key={b.id} className="c-crumb-row">
                     <span className="c-crumb-sep">/</span>
@@ -296,7 +304,7 @@ export default function Constellation() {
               </>
             ) : null}
           </div>
-          <h1 className="c-title">{focus ? focus.name : "Everything you're tracking"}</h1>
+          <h1 className="c-title">{stockFocus ? <>{focus!.name} <span className="c-title-ticker">${stockFocus.ticker}</span></> : focus ? focus.name : "Your idea web"}</h1>
           <div className="c-hero-row">
             <span className="c-meta">
               {stockFocus
@@ -304,8 +312,8 @@ export default function Constellation() {
                 : isPitches
                 ? [`${covered} saved ${covered === 1 ? "pitch" : "pitches"}`, ideaCount ? plural(ideaCount, "idea") : ""].filter(Boolean).join(" · ")
                 : focus
-                ? `${plural(deepCount(focus.id, bubbles, items), "note")}${children.length ? ` in ${children.length} ${children.length === 1 ? "moon" : "moons"}` : ""}`
-                : `${plural(total, "note")} across ${plural(themes, "planet")}${covered ? ` and ${covered} ${covered === 1 ? "pitch" : "pitches"}` : ""}`}
+                ? `${plural(deepCount(focus.id, bubbles, items), "note")}${children.length ? ` in ${plural(children.length, "subtopic")}` : ""}${links.length ? ` · ${plural(scopeLinks, "connection")}` : ""}`
+                : `${plural(total, "note")} across ${plural(themes, "topic")}${covered ? ` · ${covered} ${covered === 1 ? "pitch" : "pitches"}` : ""}${links.length ? ` · ${plural(links.length, "connection")}` : ""}`}
             </span>
             <div className="c-actions">
               <ViewSwitch mode={mode} onChange={setMode} dashboard={!!stockFocus} />
@@ -324,12 +332,12 @@ export default function Constellation() {
               )}
               {isTheme && focus && !stockFocus && !isPitches && (
                 <button className={"c-pill" + (focus.pinned ? "" : " c-pill-on")} onClick={() => c.togglePin(focus.id)}
-                  title={focus.pinned ? "You organize this planet by hand" : "AI keeps this planet organized"}>
+                  title={focus.pinned ? "You organize this topic by hand" : "AI keeps this topic organized"}>
                   {focus.pinned ? <><Lock size={13} /> Manual</> : <><Sparkles size={13} /> Auto-organizing</>}
                 </button>
               )}
               {(!focus || isPitches) && (
-                <button className="c-pill" onClick={() => setDialog({ kind: "cover" })} title="Give a stock pitch its own moon with a dashboard">
+                <button className="c-pill" onClick={() => setDialog({ kind: "cover" })} title="Give a stock pitch its own hub with a dashboard">
                   <Bookmark size={13} /> Save a pitch
                 </button>
               )}
@@ -340,12 +348,12 @@ export default function Constellation() {
               )}
               {!focus && total > 1 && (
                 <button className="c-pill" onClick={() => setDialog({ kind: "reorganize" })} disabled={c.activity.kind === "reshaping"}
-                  title="Regroup everything into a few broad planets with moons">
+                  title="Regroup everything into a few broad topics with subtopics">
                   <Wand2 size={13} /> Reorganize
                 </button>
               )}
               {!stockFocus && !isPitches && (
-                <button className="c-icon-btn" title={focus ? "New moon" : "New planet"} aria-label={focus ? "New moon" : "New planet"}
+                <button className="c-icon-btn" title={focus ? "New subtopic" : "New topic"} aria-label={focus ? "New subtopic" : "New topic"}
                   onClick={() => setDialog({ kind: "create", parentId: fid })}><Plus size={16} /></button>
               )}
               {focus && (
@@ -367,39 +375,27 @@ export default function Constellation() {
               <div className="c-scroll">
                 <ListView items={scopeItems} bubbles={bubbles} focusId={fid} onOpen={setOpenItemId} onOpenTicker={openTicker} />
               </div>
-            ) : mode === "web" && scopeItems.length ? (
-              <WebView items={scopeItems} links={links} insights={insights} groupOf={groupOf}
-                onOpenItem={setOpenItemId} onOpenInsight={setOpenInsightId} />
-            ) : stockFocus ? (
+            ) : mode === "dashboard" && stockFocus ? (
               <div className="c-scroll">
                 <StockDashboard stock={stockFocus} items={items} bubbles={bubbles} connectionsReady={c.connectionsReady} newsReady={c.newsReady}
                   onOpenItem={setOpenItemId} onScan={() => c.scanReads(stockFocus.id)}
                   onSaveModel={model => c.updateStock(stockFocus.id, { model })}
                   onNewsEmail={on => c.updateStock(stockFocus.id, { newsEmail: on })} />
               </div>
-            ) : showOrbs ? (
-              <OrbField bubbles={children} allBubbles={bubbles} items={items} pulseId={pulseId} onOpen={(id, o) => go(id, o)} />
-            ) : here.length ? (
-              <div className="c-scroll">
-                <ItemGrid items={here} hue={focus?.hue ?? 232} onOpen={setOpenItemId} />
-              </div>
+            ) : scopeItems.length || children.length ? (
+              <WebView hubs={hubs} items={scopeItems} links={links} insights={insights} hubOf={hubOf} hueOf={hueOf} pulseHub={pulseHub}
+                onOpenHub={(id, o) => go(id, o)} onOpenItem={setOpenItemId} onOpenInsight={setOpenInsightId} />
             ) : (
               <Empty name={focus?.name} onAdd={() => setAdding(true)} />
             )}
           </motion.div>
         </AnimatePresence>
         <AnimatePresence>
-          {mode === "web" && unlinked > 0 && c.connectionsReady && (
+          {mode === "web" && unlinked > 0 && c.connectionsReady && scopeItems.length > 0 && (
             <motion.button key="connect" className="c-loose glass c-connect" onClick={() => c.linkAll(fid ? scopeItems.map(i => i.id) : null)}
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
-              title={focus ? `Connects these notes to each other, within ${focus.name} only` : "Connects these notes to everything in your space"}>
+              title={focus ? `Connects these notes to each other, within ${focus.name} only` : "Connects these notes to everything in your web"}>
               <Link2 size={14} /> Find connections for {unlinked} {unlinked === 1 ? "note" : "notes"}{focus ? ` in ${focus.name}` : ""}
-            </motion.button>
-          )}
-          {mode === "orbits" && showOrbs && here.length > 0 && (
-            <motion.button key="loose" className="c-loose glass" onClick={() => setDialog({ kind: "loose" })}
-              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}>
-              <StickyNote size={14} /> {here.length} {here.length === 1 ? "note" : "notes"} not in a moon
             </motion.button>
           )}
         </AnimatePresence>
@@ -421,7 +417,7 @@ export default function Constellation() {
         )}
         {undoPlan && !c.saveError && (
           <motion.div key="undo" className="c-toast glass c-toast-action" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}>
-            <span>Your space has been reorganized.</span>
+            <span>Your topics have been reorganized.</span>
             <button className="c-btn c-btn-ghost" onClick={() => { c.restore(undoPlan); setUndoPlan(null); }}>Undo</button>
           </motion.div>
         )}
@@ -447,7 +443,7 @@ export default function Constellation() {
               transition={{ type: "spring", stiffness: 380, damping: 28 }}>
               <div className="c-dropzone-orb"><FileUp size={30} strokeWidth={1.6} /></div>
               <div className="c-dropzone-title">Drop to save</div>
-              <div className="c-dropzone-sub">PDFs, images, Word, Excel, PowerPoint and text. Each one is read and filed into the right planet.</div>
+              <div className="c-dropzone-sub">PDFs, images, Word, Excel, PowerPoint and text. Each one is read, filed under the right topic and wired into your web.</div>
             </motion.div>
           </motion.div>
         )}
@@ -482,18 +478,11 @@ export default function Constellation() {
       <InsightsSheet open={insightsOpen} insights={insights} onClose={() => setInsightsOpen(false)} onOpen={setOpenInsightId}
         onFind={() => c.findIdeas(fid ? scopeItems.map(i => i.id) : null)} count={scopeItems.length} scopeName={focus?.name} />
 
-      <Sheet open={dialog.kind === "loose"} onClose={closeDialog} width={760} label="Notes not in a moon">
-        <div className="c-sheet-title">Not in a moon</div>
-        <div className="c-sheet-sub">Notes saved directly on {focus?.name}.</div>
-        <div className="c-sheet-scroll">
-          <ItemGrid items={here} hue={focus?.hue ?? 232} onOpen={id => { closeDialog(); setOpenItemId(id); }} />
-        </div>
-      </Sheet>
       <NameDialog
         open={dialog.kind === "create"}
-        title={dialog.kind === "create" && dialog.parentId ? `New moon in ${focus?.name}` : "New planet"}
+        title={dialog.kind === "create" && dialog.parentId ? `New subtopic in ${focus?.name}` : "New topic"}
         sub={dialog.kind === "create" && dialog.parentId
-          ? (isTheme ? "Adding a moon by hand switches this planet to manual, so the AI won't reshuffle it." : "A narrower topic inside this one.")
+          ? (isTheme ? "Adding a subtopic by hand switches this topic to manual, so the AI won't reshuffle it." : "A narrower topic inside this one.")
           : "A broad area you invest in, such as AI, Space, Energy or Healthcare & Biotech."}
         initial="" cta="Create"
         onClose={closeDialog}
@@ -505,8 +494,8 @@ export default function Constellation() {
         sub={`This removes it and the ${dialogBubble ? deepCount(dialogBubble.id, bubbles, items) : 0} notes inside it. This can't be undone.`}
         cta="Delete" onClose={closeDialog}
         onConfirm={() => { if (dialogBubble) { go(dialogBubble.parentId); c.deleteBubble(dialogBubble.id); } }} />
-      <ConfirmDialog open={dialog.kind === "reorganize"} title="Reorganize your space?" tone="primary"
-        sub={`The AI regroups your ${total} notes into a few broad planets, each with its own moons, such as AI › Infrastructure & Power. Planets you organize by hand, and your stock pitches, stay as they are. You can undo it right after.`}
+      <ConfirmDialog open={dialog.kind === "reorganize"} title="Reorganize your topics?" tone="primary"
+        sub={`The AI regroups your ${total} notes into a few broad topics, each with its own subtopics, such as AI › Infrastructure & Power. Topics you organize by hand, and your stock pitches, stay as they are. You can undo it right after.`}
         cta="Reorganize" onClose={closeDialog} onConfirm={runReorganize} />
       <ConfirmDialog open={dialog.kind === "deleteItem"} title="Delete this note?" sub={dialogItem?.title ?? ""}
         cta="Delete" onClose={closeDialog}
@@ -547,9 +536,9 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 function Empty({ name, onAdd }: { name?: string; onAdd: () => void }) {
   return (
     <motion.div className="c-empty" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-      <div className="c-empty-orb" />
-      <div className="c-empty-title">{name ? `Nothing in ${name} yet` : "Your space is empty"}</div>
-      <div className="c-empty-text">Save a link or a thought. It finds its place, and the space organizes itself around it.</div>
+      <div className="c-empty-orb"><Network size={34} strokeWidth={1.4} /></div>
+      <div className="c-empty-title">{name ? `Nothing in ${name} yet` : "Your idea web is empty"}</div>
+      <div className="c-empty-text">Save a link, a filing or a thought. It finds its topic and the web draws its connections for you.</div>
       <button className="c-btn c-btn-primary" onClick={onAdd}><Plus size={16} /> Save something</button>
     </motion.div>
   );

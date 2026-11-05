@@ -94,7 +94,7 @@ function CoverForm({ initial, onClose, onSave }: {
   return (
     <>
       <div className="c-sheet-title">Save a pitch</div>
-      <div className="c-sheet-sub">It gets its own moon in Stock Pitches with a dashboard: price and valuation history, your model, your files, and read-throughs from the rest of your research.</div>
+      <div className="c-sheet-sub">It gets its own hub under Stock Pitches with a dashboard: price and valuation history, your model, your files, and read-throughs from the rest of your research.</div>
       <div className="c-cover-row">
         <input className="c-input c-cover-ticker" autoFocus value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())}
           onKeyDown={e => { if (e.key === "Enter") save(); }} placeholder="Ticker, e.g. STM" aria-label="Ticker" />

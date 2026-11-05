@@ -45,7 +45,7 @@ export default function StockPanel({ symbol, items, onClose, onOpenItem, onCover
 
       {symbol && a && (
         <button className="c-btn c-btn-ghost c-stock-cover" onClick={() => onCover(symbol, stock?.name ?? "")}>
-          <Plus size={15} /> Cover {symbol} as its own planet
+          <Plus size={15} /> Save {symbol} as a pitch
         </button>
       )}
 

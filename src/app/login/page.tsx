@@ -25,7 +25,7 @@ export default function Login() {
       <form style={styles.card} onSubmit={send}>
         <div style={styles.mark}>✦</div>
         <h1 style={styles.title}>Constellation</h1>
-        <p style={styles.sub}>Your research, in orbit.</p>
+        <p style={styles.sub}>Your research as a living web of ideas.</p>
         {!supabaseEnabled ? (
           <p style={styles.note}>Sign-in isn&apos;t configured. Set the Supabase env vars, or open <Link href="/" style={styles.link}>the app</Link> in local mode.</p>
         ) : state === "sent" ? (

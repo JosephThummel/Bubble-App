@@ -7,11 +7,11 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 
 export const metadata: Metadata = {
   title: "Constellation",
-  description: "Your research, in orbit.",
+  description: "Your research as a living web of ideas.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#04050a",
+  themeColor: "#06070a",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

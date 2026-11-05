@@ -97,7 +97,7 @@ export default function StockDashboard({ stock, items, bubbles, connectionsReady
             ))}
           </ul>
         ) : (
-          <p className="c-dash-empty">Market articles, posts and research elsewhere in your space that matter for {stock.ticker} show up here, with what specifically connects them to the position.</p>
+          <p className="c-dash-empty">Market articles, posts and research elsewhere in your web that matter for {stock.ticker} show up here, with what specifically connects them to the position.</p>
         )}
       </motion.section>
       </div>
