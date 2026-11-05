@@ -101,18 +101,24 @@ export default function Constellation() {
     return items.filter(i => scope.has(i.bubbleId));
   }, [items, bubbles, fid]);
   // In the web, each note hangs off the topic one level below the focus (or the focus itself).
+  // On the top level each saved pitch is its own hub, so a ticker is one click from its dashboard.
+  const pitchesId = useMemo(() => pitchesOf(bubbles)?.id ?? null, [bubbles]);
   const hubOfBubble = useCallback((bubbleId: string) => {
     const t = trailOf(bubbleId, bubbles);
     const depth = fid ? trailOf(fid, bubbles).length : 0;
+    if (!fid && t[0]?.id === pitchesId && t[1]) return t[1];
     return t[depth] ?? t[t.length - 1];
-  }, [bubbles, fid]);
+  }, [bubbles, fid, pitchesId]);
   const hubOf = useCallback((it: Item) => hubOfBubble(it.bubbleId)?.id ?? "", [hubOfBubble]);
   const hueOf = useCallback((it: Item) => bubbles.find(b => b.id === it.bubbleId)?.hue ?? 232, [bubbles]);
   const hubs = useMemo<Hub[]>(() => {
-    const out: Hub[] = children.map(b => ({ id: b.id, name: b.name, hue: b.hue, count: deepCount(b.id, bubbles, items), ticker: b.ticker, stance: b.stance }));
+    const tops = !fid && pitchesId ? children.flatMap(b => (b.id === pitchesId ? [b, ...bubbles.filter(x => x.parentId === b.id)] : [b])) : children;
+    // the Stock Pitches topic only stays as a hub for notes filed on it directly
+    const shown = tops.filter(b => fid || b.id !== pitchesId || items.some(i => i.bubbleId === b.id));
+    const out: Hub[] = shown.map(b => ({ id: b.id, name: b.name, hue: b.hue, count: !fid && b.id === pitchesId ? items.filter(i => i.bubbleId === b.id).length : deepCount(b.id, bubbles, items), ticker: b.ticker, stance: b.stance }));
     if (focus) out.unshift({ id: focus.id, name: focus.name, hue: focus.hue, count: deepCount(focus.id, bubbles, items), ticker: focus.ticker, stance: focus.stance, center: true });
     return out;
-  }, [children, focus, bubbles, items]);
+  }, [children, focus, bubbles, items, fid, pitchesId]);
   const unlinked = scopeItems.filter(i => !i.linkedAt).length;
   const scopeLinks = useMemo(() => {
     const ids = new Set(scopeItems.map(i => i.id));
