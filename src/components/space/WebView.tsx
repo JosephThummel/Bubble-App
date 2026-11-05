@@ -1,7 +1,7 @@
 "use client";
 
 import * as d3 from "d3";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Insight, Item, Link, Stance } from "@/lib/graph";
 
 // A topic shown as a hub in the web: a top-level topic, a subtopic, or a saved pitch.
@@ -26,7 +26,7 @@ type N = d3.SimulationNodeDatum & {
   id: string; kind: Kind; r: number; hue: number; hub: string; label: string; sub: string; degree: number;
   ticker?: string; stance?: Stance; center?: boolean;
 };
-type E = d3.SimulationLinkDatum<N> & { id: string; kind: "spoke" | "bond" | "insight"; strength: number; label: string };
+type E = d3.SimulationLinkDatum<N> & { id: string; kind: "spoke" | "bond" | "insight"; strength: number; label: string; quiet?: boolean };
 
 const short = (s: string, n = 30) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 const idOf = (v: string | number | N) => (typeof v === "object" ? v.id : String(v));
@@ -38,6 +38,8 @@ const idOf = (v: string | number | N) => (typeof v === "object" ? v.id : String(
 // threads stretch; scroll or pinch to zoom, drag the background to pan.
 export default function WebView({ hubs, items, links, insights, hubOf, hueOf, pulseHub, onOpenHub, onOpenItem, onOpenInsight }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
+  // by default only the key threads show: each note's two strongest connections, and the newest deductions
+  const [all, setAll] = useState(false);
   const cb = useRef({ onOpenHub, onOpenItem, onOpenInsight });
   // survive re-renders so new threads grow the web in place instead of re-scattering it
   const placed = useRef(new Map<string, { x: number; y: number }>());
@@ -49,15 +51,30 @@ export default function WebView({ hubs, items, links, insights, hubOf, hueOf, pu
     const ids = new Set(items.map(i => i.id));
     const degree = new Map<string, number>();
     const es: E[] = [];
-    for (const l of links) {
-      if (!ids.has(l.a) || !ids.has(l.b)) continue;
-      es.push({ id: l.id, kind: "bond", source: l.a, target: l.b, strength: l.strength, label: l.label });
+    const inScope = links.filter(l => ids.has(l.a) && ids.has(l.b));
+    const keep = new Set<string>();
+    if (all) inScope.forEach(l => keep.add(l.id));
+    else {
+      const per = new Map<string, number>();
+      for (const l of [...inScope].sort((p, q) => q.strength - p.strength)) {
+        if (l.strength < 2) continue;
+        if ((per.get(l.a) ?? 0) >= 2 && (per.get(l.b) ?? 0) >= 2) continue;
+        keep.add(l.id);
+        per.set(l.a, (per.get(l.a) ?? 0) + 1); per.set(l.b, (per.get(l.b) ?? 0) + 1);
+      }
+    }
+    // threads between different topics stay hidden until you hover one of their notes
+    const hubOfId = new Map(items.map(i => [i.id, hubOf(i)]));
+    for (const l of inScope) {
+      if (!keep.has(l.id)) continue;
+      const quiet = !all && hubOfId.get(l.a) !== hubOfId.get(l.b);
+      es.push({ id: l.id, kind: "bond", source: l.a, target: l.b, strength: l.strength, label: l.label, quiet });
       degree.set(l.a, (degree.get(l.a) ?? 0) + l.strength);
       degree.set(l.b, (degree.get(l.b) ?? 0) + l.strength);
     }
     const ns: N[] = hubs.map(h => ({
       id: h.id, kind: "hub", hue: h.hue, hub: h.id, degree: 99,
-      r: h.center ? 30 : 16 + Math.min(16, Math.sqrt(h.count) * 3),
+      r: h.center ? 30 : (h.ticker ? 22 : 16) + Math.min(16, Math.sqrt(h.count) * 3),
       label: h.ticker ? `$${h.ticker}` : short(h.name, 28),
       sub: `${h.count} ${h.count === 1 ? "note" : "notes"}`,
       ticker: h.ticker, stance: h.stance, center: h.center,
@@ -68,14 +85,16 @@ export default function WebView({ hubs, items, links, insights, hubOf, hueOf, pu
       ns.push({ id: i.id, kind: "item", r: 4.5 + Math.min(7, Math.sqrt(d) * 2), hue: hueOf(i), hub, label: short(i.title), sub: "", degree: d });
       if (hubIds.has(hub)) es.push({ id: `s:${i.id}`, kind: "spoke", source: hub, target: i.id, strength: 0, label: "" });
     }
-    for (const s of insights) {
+    const shownInsights = all ? insights : [...insights].sort((p, q) => q.createdAt - p.createdAt).slice(0, 5);
+    for (const s of shownInsights) {
       const inScope = s.itemIds.filter(id => ids.has(id));
       if (inScope.length < 2) continue;
       ns.push({ id: s.id, kind: "insight", r: 9, hue: 46, hub: "", label: short(s.title, 36), sub: "", degree: 50 });
       for (const id of inScope) es.push({ id: `${s.id}:${id}`, kind: "insight", source: s.id, target: id, strength: 2, label: "" });
     }
-    return { nodes: ns, edges: es };
-  }, [hubs, items, links, insights, hubOf, hueOf]);
+    const total = inScope.length, hidden = total - keep.size + (insights.length - shownInsights.length);
+    return { nodes: ns, edges: es, total, hidden };
+  }, [hubs, items, links, insights, hubOf, hueOf, all]);
 
   useEffect(() => {
     // d3 mutates nodes/edges in place, so work on copies of the memoized data
@@ -131,7 +150,7 @@ export default function WebView({ hubs, items, links, insights, hubOf, hueOf, pu
 
     // threads: faint spokes to the topic, bright bonds between notes, gold lines to deductions
     const edge = edgeLayer.selectAll<SVGPathElement, E>("path").data(edges).join("path").attr("fill", "none")
-      .attr("class", d => `w-edge w-edge-${d.kind}${d.kind === "bond" && d.strength === 3 ? " w-edge-hot" : ""}`)
+      .attr("class", d => `w-edge w-edge-${d.kind}${d.kind === "bond" && d.strength === 3 ? " w-edge-hot" : ""}${d.quiet ? " w-quiet" : ""}`)
       .attr("stroke", d => {
         if (d.kind === "insight") return "hsl(46 100% 70% / 0.55)";
         const hue = byId.get(idOf(d.target))?.hue ?? 220;
@@ -146,7 +165,7 @@ export default function WebView({ hubs, items, links, insights, hubOf, hueOf, pu
       .style("animation-delay", d => `${Math.min(1.6, (d.kind === "spoke" ? 0.15 : 0.5) + drawn++ * 0.012)}s`);
 
     // strong threads carry a traveling pulse
-    const flowEdges = edges.filter(e => (e.kind === "bond" && e.strength >= 2) || e.kind === "insight");
+    const flowEdges = edges.filter(e => (e.kind === "bond" && e.strength >= 2 && !e.quiet) || e.kind === "insight");
     const flow = flowLayer.selectAll<SVGPathElement, E>("path").data(flowEdges).join("path").attr("fill", "none")
       .attr("class", d => `w-flow${d.kind === "insight" ? " w-flow-gold" : ""}`).attr("pathLength", 1)
       .attr("stroke", d => (d.kind === "insight" ? "hsl(48 100% 85%)" : `hsl(${byId.get(idOf(d.target))?.hue ?? 220} 100% 88%)`))
@@ -179,6 +198,8 @@ export default function WebView({ hubs, items, links, insights, hubOf, hueOf, pu
     const item = node.filter(d => d.kind === "item");
     item.append("circle").attr("class", "w-halo").attr("r", d => d.r * 2.8).attr("fill", d => `url(#w-halo-${d.hue})`);
     item.append("circle").attr("class", "w-core").attr("r", d => d.r);
+    // a finger-sized target around small notes
+    node.filter(d => d.kind !== "hub").append("circle").attr("class", "w-hit").attr("r", d => Math.max(d.r + 6, 14));
 
     // deductions: a gold diamond
     const gem = node.filter(d => d.kind === "insight").append("g").attr("class", "w-gem");
@@ -186,8 +207,8 @@ export default function WebView({ hubs, items, links, insights, hubOf, hueOf, pu
     gem.append("rect").attr("class", "w-gem-core").attr("x", -6).attr("y", -6).attr("width", 12).attr("height", 12).attr("rx", 2.5).attr("transform", "rotate(45)");
 
     // y is in world units and dy in ems, so labels clear the node at any zoom without overlapping each other
-    node.append("text").attr("class", "w-label").attr("text-anchor", "middle").attr("y", d => d.r + 4).attr("dy", "1em").text(d => (d.kind === "hub" && d.ticker ? "" : d.label));
-    hub.append("text").attr("class", "w-sub").attr("text-anchor", "middle").attr("y", d => d.r + 4).attr("dy", d => (d.ticker ? "1.2em" : "2.75em")).text(d => d.sub);
+    node.append("text").attr("class", "w-label").attr("text-anchor", "middle").attr("y", d => d.r + 4).attr("dy", "1em").text(d => (d.kind === "hub" && d.ticker ? `${d.label}${d.stance && d.stance !== "watch" ? ` · ${d.stance}` : ""}` : d.label));
+    hub.append("text").attr("class", "w-sub").attr("text-anchor", "middle").attr("y", d => d.r + 4).attr("dy", "2.75em").text(d => d.sub);
 
     // hover: light up a node's neighborhood and show what each thread means
     const neighbors = new Map<string, Set<string>>();
@@ -309,5 +330,14 @@ export default function WebView({ hubs, items, links, insights, hubOf, hueOf, pu
     return () => { sim.stop(); };
   }, [data, pulseHub]);
 
-  return <svg ref={svgRef} className="w-svg" />;
+  return (
+    <>
+      <svg ref={svgRef} className="w-svg" />
+      {(data.hidden > 0 || all) && (
+        <button className="c-pill w-loose" onClick={() => setAll(a => !a)} aria-pressed={all}>
+          {all ? "Show key connections only" : `Show all ${data.total} connections`}
+        </button>
+      )}
+    </>
+  );
 }
